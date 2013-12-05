@@ -20,6 +20,10 @@ set(3rdparty_SRC
 3rdparty/qtlockedfile/qtlockedfile.cpp
 3rdparty/fancylineedit/fancylineedit.cpp
 3rdparty/QProgressIndicator/QProgressIndicator.cpp
+3rdparty/simplefilewatcher/FileWatcher.cpp
+3rdparty/simplefilewatcher/FileWatcherOSX.cpp
+3rdparty/simplefilewatcher/FileWatcherWin32.cpp
+3rdparty/simplefilewatcher/FileWatcherLinux.cpp
 )
 
 set(3rdparty_HEADER
@@ -28,6 +32,7 @@ set(3rdparty_HEADER
 3rdparty/qtsingleapplication/qtsinglecoreapplication.h
 3rdparty/fancylineedit/fancylineedit.h
 3rdparty/QProgressIndicator/QProgressIndicator.h
+3rdparty/simplefilewatcher/FileWatcher/FileWatcher.h
 )
 
 qt_wrap_cpp(3rdparty_MOC ${3rdparty_HEADER})
@@ -45,6 +50,7 @@ set(3rdparty_INC
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fancylineedit
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/csync
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/qjson
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/simplefilewatcher/
     )
 
 set(libsync_SRCS
