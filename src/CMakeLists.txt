@@ -20,10 +20,6 @@ set(3rdparty_SRC
 3rdparty/qtlockedfile/qtlockedfile.cpp
 3rdparty/fancylineedit/fancylineedit.cpp
 3rdparty/QProgressIndicator/QProgressIndicator.cpp
-3rdparty/simplefilewatcher/FileWatcher.cpp
-3rdparty/simplefilewatcher/FileWatcherOSX.cpp
-3rdparty/simplefilewatcher/FileWatcherWin32.cpp
-3rdparty/simplefilewatcher/FileWatcherLinux.cpp
 )
 
 set(3rdparty_HEADER
@@ -32,7 +28,6 @@ set(3rdparty_HEADER
 3rdparty/qtsingleapplication/qtsinglecoreapplication.h
 3rdparty/fancylineedit/fancylineedit.h
 3rdparty/QProgressIndicator/QProgressIndicator.h
-3rdparty/simplefilewatcher/FileWatcher/FileWatcher.h
 )
 
 qt_wrap_cpp(3rdparty_MOC ${3rdparty_HEADER})
@@ -57,6 +52,7 @@ set(libsync_SRCS
     mirall/folderman.cpp
     mirall/folder.cpp
     mirall/folderwatcher.cpp
+    mirall/dirmonitor.cpp
     mirall/syncresult.cpp
     mirall/mirallconfigfile.cpp
     mirall/csyncthread.cpp
@@ -85,12 +81,17 @@ set(libsync_SRCS
     creds/shibboleth/shibbolethconfigfile.cpp
     creds/credentialscommon.cpp
     3rdparty/qjson/json.cpp
+    3rdparty/simplefilewatcher/FileWatcher.cpp
+    3rdparty/simplefilewatcher/FileWatcherOSX.cpp
+    3rdparty/simplefilewatcher/FileWatcherWin32.cpp
+    3rdparty/simplefilewatcher/FileWatcherLinux.cpp
 )
 
 set(libsync_HEADERS
     mirall/folderman.h
     mirall/folder.h
     mirall/folderwatcher.h
+    mirall/dirmonitor.h
     mirall/csyncthread.h
     mirall/owncloudpropagator.h
     mirall/syncjournaldb.h
@@ -116,6 +117,7 @@ set(libsync_HEADERS
     creds/shibboleth/shibbolethconfigfile.h
     creds/credentialscommon.h
     3rdparty/qjson/json.h
+    3rdparty/simplefilewatcher/FileWatcher/FileWatcher.h
 )
 
 IF( INOTIFY_FOUND )
