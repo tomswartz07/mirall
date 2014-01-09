@@ -1,7 +1,10 @@
 include_directories(${CMAKE_CURRENT_LIST_DIR}/../src)
 include_directories(${CSYNC_INCLUDE_DIR}/csync ${CSYNC_INCLUDE_DIR} ${CSYNC_INCLUDE_DIR}/httpbf/src ${CSYNC_BUILD_PATH}/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src/3rdparty/simplefilewatcher/)
+
 include(owncloud_add_test.cmake)
 
 owncloud_add_test(OwncloudPropagator)
 owncloud_add_test(Utility)
 owncloud_add_test(FolderWatcherPrivate)
+owncloud_add_test(DirMonitor)
