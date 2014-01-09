@@ -34,7 +34,7 @@ void DirMonitor::UpdateListener::handleFileAction(FW::WatchID watchid, const Str
     QString qdir = QString::fromStdString(dir);
     QString qfile = QString::fromStdString(filename);
 
-    qDebug() << "XXXXXXXXX ";
+    qDebug() << "Update happend!";
 
     switch(action)
     {
@@ -99,7 +99,6 @@ void DirMonitor::slotRegisterBusyFile( const QString& file, bool ignore )
 void DirMonitor::addPath(const QString &path )
 {
     _fileWatcher->addWatch(path.toStdString(), _listener.data(), true);
-    _fileWatcher->update();
 }
 
 void DirMonitor::removePath(const QString &path )
