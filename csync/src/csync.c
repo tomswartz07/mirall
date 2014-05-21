@@ -197,9 +197,6 @@ int csync_init(CSYNC *ctx) {
     ctx->remote.type = LOCAL_REPLICA;
   }
 
-  if (ctx->options.timeout)
-    csync_vio_set_property(ctx, "timeout", &ctx->options.timeout);
-
   if (c_rbtree_create(&ctx->local.tree, _key_cmp, _data_cmp) < 0) {
     ctx->status_code = CSYNC_STATUS_TREE_ERROR;
     rc = -1;
@@ -447,14 +444,15 @@ static int _csync_treewalk_visitor(void *obj, void *data) {
       trav.rename_path  = cur->destpath;
       trav.etag         = cur->etag;
       trav.file_id      = cur->file_id;
+      trav.inode        = cur->inode;
 
       trav.error_status = cur->error_status;
       trav.should_update_etag = cur->should_update_etag;
 
       if( other_node ) {
           csync_file_stat_t *other_stat = (csync_file_stat_t*)other_node->data;
-          trav.other.etag = other_stat->etag ? c_strdup(other_stat->etag) : NULL;
-          trav.other.file_id = c_strdup(other_stat->file_id);
+          trav.other.etag = other_stat->etag;
+          trav.other.file_id = other_stat->file_id;
           trav.other.instruction = other_stat->instruction;
           trav.other.modtime = other_stat->modtime;
           trav.other.size = other_stat->size;
@@ -629,6 +627,8 @@ int csync_commit(CSYNC *ctx) {
   _csync_clean_ctx(ctx);
 
   ctx->remote.read_from_db = 0;
+  ctx->read_from_db_disabled = 0;
+
 
   /* Create new trees */
   rc = c_rbtree_create(&ctx->local.tree, _key_cmp, _data_cmp);
@@ -921,5 +921,12 @@ void csync_file_stat_free(csync_file_stat_t *st)
 int csync_set_module_property(CSYNC* ctx, const char* key, void* value)
 {
     return csync_vio_set_property(ctx, key, value);
+}
+
+
+int csync_set_read_from_db(CSYNC* ctx, int enabled)
+{
+    ctx->read_from_db_disabled = !enabled;
+    return 0;
 }
 

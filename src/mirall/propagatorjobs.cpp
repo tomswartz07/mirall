@@ -104,9 +104,17 @@ void PropagateLocalMkdir::start()
     if (_propagator->_abortRequested.fetchAndAddRelaxed(0))
         return;
 
+    QString newDirName( _propagator->_localDir + _item._file );
+    QDir newDir( newDirName );
+    QString sysDirName = newDir.dirName();
+    if( newDir.exists() && ! _item._file.endsWith(sysDirName,  Qt::CaseSensitive)) {
+        qDebug() << "WARN: new directory to create locally already exists!";
+        done( SyncFileItem::NormalError, tr("Attention, possible case sensitivity clash with %1").arg(newDirName) );
+        return;
+    }
     QDir d;
-    if (!d.mkpath(_propagator->_localDir +  _item._file)) {
-        done(SyncFileItem::NormalError, tr("could not create directory %1").arg(_propagator->_localDir +  _item._file));
+    if (!d.mkpath( newDirName )) {
+        done( SyncFileItem::NormalError, tr("could not create directory %1").arg(newDirName) );
         return;
     }
     done(SyncFileItem::Success);
@@ -181,7 +189,6 @@ void PropagateLocalRename::start()
         QFile::rename(_propagator->_localDir + _item._file, _propagator->_localDir + _item._renameTarget);
     }
 
-    _item._instruction = CSYNC_INSTRUCTION_DELETED;
     _propagator->_journal->deleteFileRecord(_item._originalFile);
 
     // store the rename file name in the item.
@@ -322,6 +329,16 @@ bool PropagateNeonJob::updateErrorFromSession(int neon_code, ne_request* req, in
     }
     return false;
 }
+
+void UpdateMTimeAndETagJob::start()
+{
+    QScopedPointer<char, QScopedPointerPodDeleter> uri(
+        ne_path_escape((_propagator->_remoteDir + _item._file).toUtf8()));
+    if (!updateMTimeAndETag(uri.data(), _item._modtime))
+        return;
+    done(SyncFileItem::Success);
+}
+
 
 
 }

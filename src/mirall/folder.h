@@ -59,7 +59,7 @@ typedef enum SyncFileStatus_s {
 } SyncFileStatus;
 
 
-class Folder : public QObject
+class OWNCLOUDSYNC_EXPORT Folder : public QObject
 {
     Q_OBJECT
 
@@ -148,10 +148,8 @@ public slots:
 
      /**
        * terminate the current sync run
-       *
-       * If block is true, this will block synchroniously for the sync thread to finish.
        */
-     void slotTerminateSync(bool block);
+     void slotTerminateSync();
 
      void slotAboutToRemoveAllFiles(SyncFileItem::Direction, bool*);
 

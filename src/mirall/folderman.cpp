@@ -27,8 +27,10 @@
 #include <shlobj.h>
 #endif
 
-#include <QDesktopServices>
+#ifndef TOKEN_AUTH_ONLY
 #include <QMessageBox>
+#endif
+
 #include <QtCore>
 
 namespace Mirall {
@@ -143,13 +145,13 @@ int FolderMan::setupFolders()
   unloadAllFolders();
 
   QDir dir( _folderConfigPath );
-  dir.setFilter(QDir::Files);
+  //We need to include hidden files just in case the alias starts with '.'
+  dir.setFilter(QDir::Files | QDir::Hidden);
   QStringList list = dir.entryList();
 
   foreach ( const QString& alias, list ) {
     Folder *f = setupFolderFromConfigFile( alias );
     if( f ) {
-        registerFolderMonitor(f);
         slotScheduleSync(alias);
         emit( folderSyncStateChange( f->alias() ) );
     }
@@ -163,7 +165,8 @@ int FolderMan::setupFolders()
 
 bool FolderMan::ensureJournalGone(const QString &localPath)
 {
-
+	// FIXME move this to UI, not libowncloudsync
+#ifndef TOKEN_AUTH_ONLY
     // remove old .csync_journal file
     QString stateDbFile = localPath+QLatin1String("/.csync_journal.db");
     while (QFile::exists(stateDbFile) && !QFile::remove(stateDbFile)) {
@@ -177,6 +180,7 @@ bool FolderMan::ensureJournalGone(const QString &localPath)
             return false;
         }
     }
+#endif
     return true;
 }
 
@@ -297,6 +301,7 @@ Folder* FolderMan::setupFolderFromConfigFile(const QString &file) {
     qDebug() << "Adding folder to Folder Map " << folder;
     _folderMap[alias] = folder;
     if (paused) {
+        folder->setSyncEnabled(!paused);
         _disabledFolders.insert(folder);
     }
 
@@ -307,6 +312,8 @@ Folder* FolderMan::setupFolderFromConfigFile(const QString &file) {
     connect(folder, SIGNAL(syncFinished(SyncResult)), SLOT(slotFolderSyncFinished(SyncResult)));
 
     _folderChangeSignalMapper->setMapping( folder, folder->alias() );
+
+    registerFolderMonitor(folder);
     return folder;
 }
 
@@ -347,9 +354,10 @@ void FolderMan::terminateSyncProcess( const QString& alias )
     if( ! folderAlias.isEmpty() && _folderMap.contains(folderAlias) ) {
         Folder *f = _folderMap[folderAlias];
         if( f ) {
-            f->slotTerminateSync(true);
-            if(_currentSyncFolder == folderAlias )
+            f->slotTerminateSync();
+            if(_currentSyncFolder == folderAlias ) {
                 _currentSyncFolder.clear();
+            }
         }
     }
 }

@@ -138,7 +138,7 @@ void OwncloudSetupWizard::slotDetermineAuthType(const QString &urlString)
     CheckServerJob *job = new CheckServerJob(_ocWizard->account(), false, this);
     job->setIgnoreCredentialFailure(true);
     connect(job, SIGNAL(instanceFound(QUrl,QVariantMap)), SLOT(slotOwnCloudFoundAuth(QUrl,QVariantMap)));
-    connect(job, SIGNAL(networkError(QNetworkReply*)), SLOT(slotNoOwnCloudFoundAuth(QNetworkReply*)));
+    connect(job, SIGNAL(instanceNotFound(QNetworkReply*)), SLOT(slotNoOwnCloudFoundAuth(QNetworkReply*)));
     connect(job, SIGNAL(timeout(const QUrl&)), SLOT(slotNoOwnCloudFoundAuthTimeout(const QUrl&)));
     job->setTimeout(10*1000);
     job->start();
@@ -152,7 +152,8 @@ void OwncloudSetupWizard::slotOwnCloudFoundAuth(const QUrl& url, const QVariantM
                                         .arg(CheckServerJob::versionString(info))
                                         .arg(CheckServerJob::version(info)));
 
-    if (url.path().endsWith("/status.php")) {
+    QString p = url.path();
+    if (p.endsWith("/status.php")) {
         // We might be redirected, update the account
         QUrl redirectedUrl = url;
         redirectedUrl.setPath(url.path().left(url.path().length() - 11));
@@ -186,7 +187,8 @@ void OwncloudSetupWizard::slotNoOwnCloudFoundAuthTimeout(const QUrl&url)
 void OwncloudSetupWizard::slotConnectToOCUrl( const QString& url )
 {
     qDebug() << "Connect to url: " << url;
-    _ocWizard->account()->setCredentials(_ocWizard->getCredentials());
+    AbstractCredentials *creds = _ocWizard->getCredentials();
+    _ocWizard->account()->setCredentials(creds);
     _ocWizard->setField(QLatin1String("OCUrl"), url );
     _ocWizard->appendToConfigurationLog(tr("Trying to connect to %1 at %2...")
                                         .arg( Theme::instance()->appNameGUI() ).arg(url) );
@@ -196,7 +198,9 @@ void OwncloudSetupWizard::slotConnectToOCUrl( const QString& url )
 
 void OwncloudSetupWizard::testOwnCloudConnect()
 {
-    ValidateDavAuthJob *job = new ValidateDavAuthJob(_ocWizard->account(), this);
+    Account *account = _ocWizard->account();
+
+    ValidateDavAuthJob *job = new ValidateDavAuthJob(account, this);
     job->setIgnoreCredentialFailure(true);
     connect(job, SIGNAL(authResult(QNetworkReply*)), SLOT(slotConnectionCheck(QNetworkReply*)));
     job->start();
@@ -355,7 +359,7 @@ bool OwncloudSetupWizard::ensureStartFromScratch(const QString &localFolder) {
             QMessageBox::StandardButton but;
             but = QMessageBox::question( 0, tr("Folder rename failed"),
                                          tr("Can't remove and back up the folder because the folder or a file in it is open in another program."
-                                            "Please close the folder or file and hit retry or cancel the setup."), QMessageBox::Retry | QMessageBox::Abort, QMessageBox::Retry);
+                                            " Please close the folder or file and hit retry or cancel the setup."), QMessageBox::Retry | QMessageBox::Abort, QMessageBox::Retry);
             if( but == QMessageBox::Abort ) {
                 break;
             }
@@ -446,7 +450,7 @@ void DetermineAuthTypeJob::start()
     AbstractNetworkJob::start();
 }
 
-void DetermineAuthTypeJob::finished()
+bool DetermineAuthTypeJob::finished()
 {
     QUrl redirection = reply()->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
     qDebug() << Q_FUNC_INFO << redirection.toString();
@@ -472,6 +476,7 @@ void DetermineAuthTypeJob::finished()
             emit authType(WizardCommon::HttpCreds);
         }
     }
+    return true;
 }
 
 ValidateDavAuthJob::ValidateDavAuthJob(Account *account, QObject *parent)
@@ -481,15 +486,17 @@ ValidateDavAuthJob::ValidateDavAuthJob(Account *account, QObject *parent)
 
 void ValidateDavAuthJob::start()
 {
-    QNetworkReply *reply = getRequest(account()->davPath());
+    QString p = account()->davPath();
+    QNetworkReply *reply = getRequest(p);
     setReply(reply);
     setupConnections(reply);
     AbstractNetworkJob::start();
 }
 
-void ValidateDavAuthJob::finished()
+bool ValidateDavAuthJob::finished()
 {
     emit authResult(reply());
+    return true;
 }
 
 } // ns Mirall

@@ -14,6 +14,7 @@
 #ifndef PROGRESSDISPATCHER_H
 #define PROGRESSDISPATCHER_H
 
+#include "owncloudlib.h"
 #include <QObject>
 #include <QHash>
 #include <QTime>
@@ -53,10 +54,12 @@ namespace Progress
 
         void setProgressComplete(const SyncFileItem &item) {
             _currentItems.remove(item._file);
-            if (Progress::isSizeDependent(item._instruction)) {
-                _completedSize += item._size;
+            if (!item._isDirectory) {
+                _completedFileCount++;
+                if (Progress::isSizeDependent(item._instruction)) {
+                    _completedSize += item._size;
+                }
             }
-            _completedFileCount++;
             _lastCompletedItem = item;
         }
         void setProgressItem(const SyncFileItem &item, quint64 size) {
@@ -68,16 +71,17 @@ namespace Progress
         quint64 completedSize() const {
             quint64 r = _completedSize;
             foreach(const ProgressItem &i, _currentItems) {
-                r += i._completedSize;
+                if (!i._item._isDirectory)
+                    r += i._completedSize;
             }
             return r;
         }
     };
 
-    QString asActionString( const SyncFileItem& item );
-    QString asResultString(  const SyncFileItem& item );
+    OWNCLOUDSYNC_EXPORT QString asActionString( const SyncFileItem& item );
+    OWNCLOUDSYNC_EXPORT QString asResultString(  const SyncFileItem& item );
 
-    bool isWarningKind( SyncFileItem::Status );
+    OWNCLOUDSYNC_EXPORT bool isWarningKind( SyncFileItem::Status );
 
 }
 
@@ -90,7 +94,7 @@ namespace Progress
  * or the overall sync progress.
  *
  */
-class ProgressDispatcher : public QObject
+class OWNCLOUDSYNC_EXPORT ProgressDispatcher : public QObject
 {
     Q_OBJECT
 

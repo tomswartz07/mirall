@@ -60,6 +60,13 @@ void PropagateItemJob::done(SyncFileItem::Status status, const QString &errorStr
         break;
     case SyncFileItem::FatalError:
     case SyncFileItem::NormalError:
+#ifdef OWNCLOUD_5XX_NO_BLACKLIST
+        if (_item._httpErrorCode / 100 == 5) {
+            // In this configuration, never blacklist error 5xx
+            qDebug() << "Do not blacklist error " << _item._httpErrorCode;
+            break;
+        }
+#endif
         _propagator->_journal->updateBlacklistEntry( record );
         break;
     case SyncFileItem::Success:
@@ -124,7 +131,7 @@ bool PropagateItemJob::checkForProblemsWithShared(int httpStatusCode, const QStr
             _restoreJob.reset(newJob);
             connect(_restoreJob.data(), SIGNAL(completed(SyncFileItem)),
                     this, SLOT(slotRestoreJobCompleted(SyncFileItem)));
-            _restoreJob->start();
+            QMetaObject::invokeMethod(newJob, "start");
         }
         return true;
     }
@@ -330,6 +337,18 @@ void PropagateDirectory::slotSubJobReady()
         }
         emit finished(_hasError == SyncFileItem::NoStatus ? SyncFileItem::Success : _hasError);
     }
+}
+
+int OwncloudPropagator::httpTimeout()
+{
+    static int timeout;
+    if (!timeout) {
+        timeout = qgetenv("OWNCLOUD_TIMEOUT").toUInt();
+        if (timeout == 0) {
+            timeout = 300; // default to 300 secs
+        }
+    }
+    return timeout;
 }
 
 

@@ -21,6 +21,8 @@
 #include <QHash>
 #include <QSqlQuery>
 
+#include "utility.h"
+
 namespace Mirall {
 class SyncJournalFileRecord;
 class SyncJournalBlacklistRecord;
@@ -30,7 +32,7 @@ class SyncJournalBlacklistRecord;
  *
  * This class is thread safe. All public function are locking the mutex.
  */
-class SyncJournalDb : public QObject
+class OWNCLOUDSYNC_EXPORT SyncJournalDb : public QObject
 {
     Q_OBJECT
 public:
@@ -85,6 +87,12 @@ public:
      */
     bool isConnected();
 
+    /**
+     * Tell the sync engine if we need to disable the fetch from db to be sure that the fileid
+     * are updated.
+     */
+    bool isUpdateFrom_1_5();
+
 
 
 
@@ -106,6 +114,7 @@ private:
     QString _dbFile;
     QMutex _mutex; // Public functions are protected with the mutex.
     int _transaction;
+    bool _possibleUpgradeFromMirall_1_5;
     QScopedPointer<QSqlQuery> _getFileRecordQuery;
     QScopedPointer<QSqlQuery> _setFileRecordQuery;
     QScopedPointer<QSqlQuery> _getDownloadInfoQuery;

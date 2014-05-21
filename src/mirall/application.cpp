@@ -45,6 +45,8 @@
 #include <QMenu>
 #include <QMessageBox>
 
+class QSocket;
+
 namespace Mirall {
 
 namespace {
@@ -64,14 +66,12 @@ static const char optionsC[] =
 
 QString applicationTrPath()
 {
-#if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
-    return QString::fromLatin1(DATADIR"/"APPLICATION_EXECUTABLE"/i18n/");
-#endif
-#ifdef Q_OS_MAC
-    return QApplication::applicationDirPath()+QLatin1String("/../Resources/Translations"); // path defaults to app dir.
-#endif
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
    return QApplication::applicationDirPath();
+#elif defined(Q_OS_MAC)
+    return QApplication::applicationDirPath()+QLatin1String("/../Resources/Translations"); // path defaults to app dir.
+#elif defined(Q_OS_UNIX)
+    return QString::fromLatin1(DATADIR"/"APPLICATION_EXECUTABLE"/i18n/");
 #endif
 }
 }
@@ -79,7 +79,7 @@ QString applicationTrPath()
 // ----------------------------------------------------------------------------------
 
 Application::Application(int &argc, char **argv) :
-    SharedTools::QtSingleApplication(argc, argv),
+    SharedTools::QtSingleApplication(Theme::instance()->appName() ,argc, argv),
     _gui(0),
     _theme(Theme::instance()),
     _helpOnly(false),
@@ -99,14 +99,13 @@ Application::Application(int &argc, char **argv) :
     //no need to waste time;
     if ( _helpOnly ) return;
 
-    initialize();
     if (isRunning())
         return;
 
     setupLogging();
     setupTranslations();
 
-    connect( this, SIGNAL(messageReceived(QString)), SLOT(slotParseOptions(QString)));
+    connect( this, SIGNAL(messageReceived(QString, QObject*)), SLOT(slotParseOptions(QString, QObject*)));
 
     Account *account = Account::restore();
     if (account) {
@@ -139,6 +138,10 @@ Application::Application(int &argc, char **argv) :
             this, SLOT(slotAccountChanged(Account*,Account*)));
 
     // startup procedure.
+    connect(&_checkConnectionTimer, SIGNAL(timeout()), this, SLOT(slotCheckConnection()));
+    _checkConnectionTimer.setInterval(32 * 1000); // check for connection every 32 seconds.
+    _checkConnectionTimer.start();
+    // Also check immediatly
     QTimer::singleShot( 0, this, SLOT( slotCheckConnection() ));
 
     if( cfg.skipUpdateCheck() ) {
@@ -155,6 +158,7 @@ Application::Application(int &argc, char **argv) :
 
 Application::~Application()
 {
+    delete AccountManager::instance()->account();
     // qDebug() << "* Mirall shutdown";
 }
 
@@ -226,8 +230,9 @@ void Application::slotCheckConnection()
         if (account->state() == Account::InvalidCredidential
                 || account->state() == Account::SignedOut) {
             //Do not try to connect if we are logged out
-            if (!_userTriggeredConnect)
+            if (!_userTriggeredConnect) {
                 return;
+            }
         }
 
         if (_conValidator)
@@ -269,6 +274,8 @@ void Application::slotToggleFolderman(int state)
         folderMan->slotScheduleAllFolders();
         break;
     case Account::Disconnected:
+        _checkConnectionTimer.start();
+        // fall through
     case Account::SignedOut:
     case Account::InvalidCredidential:
         folderMan->setSyncEnabled(false);
@@ -289,6 +296,7 @@ void Application::slotConnectionValidatorResult(ConnectionValidator::Status stat
         folderMan->setSyncEnabled(true);
         // queue up the sync for all folders.
         folderMan->slotScheduleAllFolders();
+        _checkConnectionTimer.stop();
     } else {
         // if we have problems here, it's unlikely that syncing will work.
         FolderMan::instance()->setSyncEnabled(false);
@@ -298,7 +306,6 @@ void Application::slotConnectionValidatorResult(ConnectionValidator::Status stat
         if (_userTriggeredConnect) {
             _userTriggeredConnect = false;
         }
-        QTimer::singleShot(30*1000, this, SLOT(slotCheckConnection()));
     }
     _gui->startupConnected( (status == ConnectionValidator::Connected), startupFails);
 
@@ -343,7 +350,7 @@ void Application::slotUseMonoIconsChanged(bool)
     _gui->slotComputeOverallSyncStatus();
 }
 
-void Application::slotParseOptions(const QString &opts)
+void Application::slotParseOptions(const QString &opts, QObject*)
 {
     QStringList options = opts.split(QLatin1Char('|'));
     parseOptions(options);

@@ -146,6 +146,7 @@ void ownCloudGui::slotOpenPath(const QString &path)
 void ownCloudGui::slotAccountStateChanged()
 {
     setupContextMenu();
+    slotComputeOverallSyncStatus();
 }
 
 void ownCloudGui::startupConnected( bool connected, const QStringList& fails )
@@ -160,6 +161,8 @@ void ownCloudGui::startupConnected( bool connected, const QStringList& fails )
     }
 
     _startupFails = fails; // store that for the settings dialog once it appears.
+    if( !_settingsDialog.isNull() )
+        _settingsDialog->setGeneralErrors( _startupFails );
 
 }
 
@@ -169,6 +172,11 @@ void ownCloudGui::slotComputeOverallSyncStatus()
         if (a->state() == Account::SignedOut) {
             _tray->setIcon(Theme::instance()->syncStateIcon( SyncResult::Unavailable, true));
             _tray->setToolTip(tr("Please sign in"));
+            return;
+        }
+        if (a->state() == Account::Disconnected) {
+            _tray->setIcon(Theme::instance()->syncStateIcon( SyncResult::Unavailable, true));
+            _tray->setToolTip(tr("Disconnected from server"));
             return;
         }
     }

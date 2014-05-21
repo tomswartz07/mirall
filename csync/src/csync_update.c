@@ -79,6 +79,26 @@ static uint64_t _hash_of_file(CSYNC *ctx, const char *file) {
   return h;
 }
 
+#ifdef NO_RENAME_EXTENSION
+/* Return true if the two path have the same extension. false otherwise. */
+static bool _csync_sameextension(const char *p1, const char *p2) {
+    /* Find pointer to the extensions */
+    const char *e1 = strrchr(p1, '.');
+    const char *e2 = strrchr(p2, '.');
+
+    /* If the found extension contains a '/', it is because the . was in the folder name
+     *            => no extensions */
+    if (e1 && strchr(e1, '/')) e1 = NULL;
+    if (e2 && strchr(e2, '/')) e2 = NULL;
+
+    /* If none have extension, it is the same extension */
+    if (!e1 && !e2)
+        return true;
+
+    /* c_streq takes care of the rest */
+    return c_streq(e1, e2);
+}
+#endif
 
 static int _csync_detect_update(CSYNC *ctx, const char *file,
     const csync_vio_file_stat_t *fs, const int type) {
@@ -235,11 +255,20 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
             goto out;
         }
         if (type == CSYNC_FTW_TYPE_DIR && ctx->current == REMOTE_REPLICA
-                && c_streq(fs->file_id, tmp->file_id)) {
+                && c_streq(fs->file_id, tmp->file_id) && !ctx->read_from_db_disabled) {
             /* If both etag and file id are equal for a directory, read all contents from
-             * the database. */
+             * the database.
+             * The comparison of file id ensure that we fetch all the file id when upgrading from
+             * owncloud 5 to owncloud 6.
+             */
             CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "Reading from database: %s", path);
             ctx->remote.read_from_db = true;
+        }
+
+        if (!c_streq(fs->file_id, tmp->file_id) && ctx->current == REMOTE_REPLICA) {
+            /* file id has changed. Which means we need to update the DB.
+             * (upgrade from owncloud 5 to owncloud 6 for instence) */
+            st->should_update_etag = true;
         }
         st->instruction = CSYNC_INSTRUCTION_NONE;
     } else {
@@ -247,6 +276,8 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
 
         /* check if it's a file and has been renamed */
         if (ctx->current == LOCAL_REPLICA) {
+            CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "Checking for rename based on inode # %" PRId64 "", (uint64_t) fs->inode);
+
             tmp = csync_statedb_get_stat_by_inode(ctx, fs->inode);
 
             /* translate the file type between the two stat types csync has. */
@@ -259,8 +290,12 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
             }
 
             if (tmp && tmp->inode == fs->inode && tmp_vio_type == fs->type
-                    && (tmp->modtime == fs->mtime || fs->type == CSYNC_VIO_FILE_TYPE_DIRECTORY)) {
-                CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "inodes: %" PRId64 " <-> %" PRId64, (uint64_t) tmp->inode, (uint64_t) fs->inode);
+                    && (tmp->modtime == fs->mtime || fs->type == CSYNC_VIO_FILE_TYPE_DIRECTORY)
+#ifdef NO_RENAME_EXTENSION
+                    && _csync_sameextension(tmp->path, path)
+#endif
+               ) {
+                CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "pot rename detected based on inode # %" PRId64 "", (uint64_t) fs->inode);
                 /* inode found so the file has been renamed */
                 st->instruction = CSYNC_INSTRUCTION_EVAL_RENAME;
                 if (fs->type == CSYNC_VIO_FILE_TYPE_DIRECTORY) {
@@ -443,7 +478,6 @@ static bool fill_tree_from_db(CSYNC *ctx, const char *uri)
 /* File tree walker */
 int csync_ftw(CSYNC *ctx, const char *uri, csync_walker_fn fn,
     unsigned int depth) {
-  char errbuf[256] = {0};
   char *filename = NULL;
   char *d_name = NULL;
   csync_vio_handle_t *dh = NULL;
@@ -487,10 +521,7 @@ int csync_ftw(CSYNC *ctx, const char *uri, csync_walker_fn fn,
               CSYNC_LOG(CSYNC_LOG_PRIORITY_ERROR, "asprintf failed!");
           }
       } else {
-          C_STRERROR(errno, errbuf, sizeof(errbuf));
-          CSYNC_LOG(CSYNC_LOG_PRIORITY_ERROR,
-                    "opendir failed for %s - %s (errno %d)",
-                    uri, errbuf, errno);
+          CSYNC_LOG(CSYNC_LOG_PRIORITY_ERROR, "opendir failed for %s - errno %d", uri, errno);
       }
       goto error;
   }

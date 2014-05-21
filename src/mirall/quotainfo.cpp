@@ -69,8 +69,6 @@ void QuotaInfo::slotRequestFailed()
     _lastQuotaTotalBytes = 0;
     _lastQuotaUsedBytes = 0;
     _jobRestartTimer->start(failIntervalT);
-
-    _jobRestartTimer->start(failIntervalT);
 }
 
 void QuotaInfo::slotCheckQuota()

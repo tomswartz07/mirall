@@ -102,7 +102,8 @@ enum csync_status_codes_e {
     /* Codes for file individual status: */
     CSYNC_STATUS_INDIVIDUAL_IS_SYMLINK,
     CSYNC_STATUS_INDIVIDUAL_IGNORE_LIST,
-    CSYNC_STATUS_INDIVIDUAL_IS_INVALID_CHARS
+    CSYNC_STATUS_INDIVIDUAL_IS_INVALID_CHARS,
+    CYSNC_STATUS_FILE_LOCKED_OR_OPEN
 };
 
 typedef enum csync_status_codes_e CSYNC_STATUS;
@@ -130,10 +131,7 @@ enum csync_instructions_e {
   CSYNC_INSTRUCTION_IGNORE     = 0x00000020,  /* The file is ignored (UPDATE|RECONCILE) */
   CSYNC_INSTRUCTION_SYNC       = 0x00000040,  /* The file need to be pushed to the other remote (RECONCILE) */
   CSYNC_INSTRUCTION_STAT_ERROR = 0x00000080,
-  CSYNC_INSTRUCTION_ERROR      = 0x00000100,
-  /* instructions for the propagator */
-  CSYNC_INSTRUCTION_DELETED    = 0x00000200,
-  CSYNC_INSTRUCTION_UPDATED    = 0x00000400
+  CSYNC_INSTRUCTION_ERROR      = 0x00000100
 };
 
 enum csync_ftw_type_e {
@@ -172,6 +170,7 @@ enum csync_notify_type_e {
 struct csync_tree_walk_file_s {
     const char *path;
     int64_t     size;
+    int64_t     inode;
     time_t      modtime;
 #ifdef _WIN32
     uint32_t    uid;
@@ -590,6 +589,11 @@ void csync_resume(CSYNC *ctx);
  * @param ctx           The csync context.
  */
 int  csync_abort_requested(CSYNC *ctx);
+
+/**
+ * Specify if it is allowed to read the remote tree from the DB (default to enabled)
+ */
+int csync_set_read_from_db(CSYNC* ctx, int enabled);
 
 #ifdef __cplusplus
 }

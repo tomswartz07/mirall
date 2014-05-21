@@ -44,11 +44,10 @@ if(HAVE_ICONV AND WITH_ICONV)
     list(APPEND CSYNC_LINK_LIBRARIES ${ICONV_LIBRARIES})
 endif()
 
-set(BLACKLIST_ON_ERROR 0 CACHE BOOL
-  "If an errors occurs three times on the same file, do not attempt to process that file any further.")
-
-if(BLACKLIST_ON_ERROR)
-    add_definitions(-DBLACKLIST_ON_ERROR)
+# Specific option for builds tied to servers that do not support renaming extensions
+set(NO_RENAME_EXTENSION 0 CACHE BOOL "Do not issue rename if the extension changes")
+if(NO_RENAME_EXTENSION)
+    add_definitions(-DNO_RENAME_EXTENSION)
 endif()
 
 set(csync_SRCS
@@ -110,17 +109,29 @@ set_target_properties(
       SOVERSION
         ${LIBRARY_SOVERSION}
 )
-
-INSTALL(
+if(BUILD_OWNCLOUD_OSX_BUNDLE)
+  INSTALL(
+    TARGETS
+      ${CSYNC_LIBRARY}
+    LIBRARY DESTINATION
+	${LIB_INSTALL_DIR}
+    ARCHIVE DESTINATION
+	${LIB_INSTALL_DIR}
+    RUNTIME DESTINATION
+	${BIN_INSTALL_DIR}
+    )
+else()
+  INSTALL(
   TARGETS
     ${CSYNC_LIBRARY}
   LIBRARY DESTINATION
-    ${LIB_INSTALL_DIR}
+    ${LIB_INSTALL_DIR}/${APPLICATION_EXECUTABLE}
   ARCHIVE DESTINATION
-    ${LIB_INSTALL_DIR}
+    ${LIB_INSTALL_DIR}/${APPLICATION_EXECUTABLE}
   RUNTIME DESTINATION
-    ${BIN_INSTALL_DIR}
-)
+    ${BIN_INSTALL_DIR}/${APPLICATION_EXECUTABLE}
+  )
+endif()
 
 # INSTALL(
 #   FILES

@@ -49,8 +49,11 @@ CSYNC_EXCLUDE_TYPE csync_excluded(CSYNC *ctx, const char *path, int filetype);
 #include <QTimer>
 #include <QUrl>
 #include <QDir>
+
+#ifndef TOKEN_AUTH_ONLY
 #include <QMessageBox>
 #include <QPushButton>
+#endif
 
 namespace Mirall {
 
@@ -298,7 +301,7 @@ void Folder::bubbleUpSyncResult()
 
     SyncRunFileLog syncFileLog;
 
-    syncFileLog.start(path(),  _engine->stopWatch() );
+    syncFileLog.start(path(), _engine ? _engine->stopWatch() : Utility::StopWatch() );
 
     QElapsedTimer timer;
     timer.start();
@@ -463,7 +466,7 @@ void Folder::slotThreadTreeWalkResult(const SyncFileItemVector& items)
     _syncResult.setSyncFileItemVector(items);
 }
 
-void Folder::slotTerminateSync(bool block)
+void Folder::slotTerminateSync()
 {
     qDebug() << "folder " << alias() << " Terminating!";
 
@@ -473,14 +476,10 @@ void Folder::slotTerminateSync(bool block)
         // Do not display an error message, user knows his own actions.
         // _errors.append( tr("The CSync thread terminated.") );
         // _csyncError = true;
-        if (!block) {
-            setSyncState(SyncResult::SyncAbortRequested);
-            return;
-        }
-
-        slotSyncFinished();
+        setSyncEnabled(false);
+        setSyncState(SyncResult::SyncAbortRequested);
+        return;
     }
-    setSyncEnabled(false);
 }
 
 // This removes the csync File database
@@ -670,6 +669,7 @@ void Folder::slotTransmissionProgress(const Progress::Info &pi)
 
 void Folder::slotAboutToRemoveAllFiles(SyncFileItem::Direction direction, bool *cancel)
 {
+#ifndef TOKEN_AUTH_ONLY
     QString msg = direction == SyncFileItem::Down ?
         tr("This sync would remove all the files in the local sync folder '%1'.\n"
            "If you or your administrator have reset your account on the server, choose "
@@ -689,7 +689,11 @@ void Folder::slotAboutToRemoveAllFiles(SyncFileItem::Direction direction, bool *
     *cancel = msgBox.clickedButton() == keepBtn;
     if (*cancel) {
         wipe();
+        // speed up next sync
+        _lastEtag = QString();
+        QTimer::singleShot(50, this, SLOT(slotPollTimerTimeout()));
     }
+#endif
 }
 
 SyncFileStatus Folder::fileStatus( const QString& fileName )

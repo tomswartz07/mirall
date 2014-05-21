@@ -55,8 +55,6 @@ static const _instr_code_struct _instr[] =
   { "INSTRUCTION_SYNC", CSYNC_INSTRUCTION_SYNC },
   { "INSTRUCTION_STAT_ERR", CSYNC_INSTRUCTION_STAT_ERROR },
   { "INSTRUCTION_ERROR", CSYNC_INSTRUCTION_ERROR },
-  { "INSTRUCTION_DELETED", CSYNC_INSTRUCTION_DELETED },
-  { "INSTRUCTION_UPDATED", CSYNC_INSTRUCTION_UPDATED },
   { NULL, CSYNC_INSTRUCTION_ERROR }
 };
 
@@ -181,4 +179,23 @@ csync_vio_file_stat_t *csync_vio_convert_file_stat(csync_file_stat_t *st) {
     vfs->type = CSYNC_VIO_FILE_TYPE_UNKNOWN;
 
   return vfs;
+}
+
+bool (*csync_file_locked_or_open_ext) (const char*) = 0; // filled in by library user
+void set_csync_file_locked_or_open_ext(bool (*f) (const char*));
+void set_csync_file_locked_or_open_ext(bool (*f) (const char*)) {
+    csync_file_locked_or_open_ext = f;
+}
+
+bool csync_file_locked_or_open( const char *dir, const char *fname) {
+    char *tmp_uri = NULL;
+    bool ret;
+    if (!csync_file_locked_or_open_ext) {
+        return false;
+    }
+    asprintf(&tmp_uri, "%s/%s", dir, fname);
+    CSYNC_LOG(CSYNC_LOG_PRIORITY_DEBUG, "csync_file_locked_or_open %s", tmp_uri);
+    ret = csync_file_locked_or_open_ext(tmp_uri);
+    SAFE_FREE(tmp_uri);
+    return ret;
 }

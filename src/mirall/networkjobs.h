@@ -16,6 +16,7 @@
 #ifndef NETWORKJOBS_H
 #define NETWORKJOBS_H
 
+#include "owncloudlib.h"
 #include <QObject>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -46,7 +47,7 @@ private:
 /**
  * @brief The AbstractNetworkJob class
  */
-class AbstractNetworkJob : public QObject {
+class OWNCLOUDSYNC_EXPORT AbstractNetworkJob : public QObject {
     Q_OBJECT
 public:
     explicit AbstractNetworkJob(Account *account, const QString &path, QObject* parent = 0);
@@ -62,8 +63,6 @@ public:
     void setReply(QNetworkReply *reply);
     QNetworkReply* reply() const { return _reply; }
 
-    void setTimeout(qint64 msec);
-    void resetTimeout();
 
     void setIgnoreCredentialFailure(bool ignore);
     bool ignoreCredentialFailure() const { return _ignoreCredentialFailure; }
@@ -71,6 +70,9 @@ public:
     QString responseTimestamp();
     quint64 duration();
 
+public slots:
+    void setTimeout(qint64 msec);
+    void resetTimeout();
 signals:
     void networkError(QNetworkReply *reply);
 protected:
@@ -87,7 +89,7 @@ protected:
     QNetworkReply* headRequest(const QUrl &url);
 
     int maxRedirects() const { return 10; }
-    virtual void finished() = 0;
+    virtual bool finished() = 0;
     QString       _responseTimestamp;
     QElapsedTimer _durationTimer;
     quint64       _duration;
@@ -108,7 +110,7 @@ private:
 /**
  * @brief The EntityExistsJob class
  */
-class EntityExistsJob : public AbstractNetworkJob {
+class OWNCLOUDSYNC_EXPORT EntityExistsJob : public AbstractNetworkJob {
     Q_OBJECT
 public:
     explicit EntityExistsJob(Account *account, const QString &path, QObject* parent = 0);
@@ -118,13 +120,13 @@ signals:
     void exists(QNetworkReply*);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
 };
 
 /**
  * @brief The LsColJob class
  */
-class LsColJob : public AbstractNetworkJob {
+class OWNCLOUDSYNC_EXPORT LsColJob : public AbstractNetworkJob {
     Q_OBJECT
 public:
     explicit LsColJob(Account *account, const QString &path, QObject *parent = 0);
@@ -134,7 +136,7 @@ signals:
     void directoryListing(const QStringList &items);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
 };
 
 /**
@@ -152,7 +154,7 @@ signals:
     void result(const QVariantMap &values);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
 
 private:
     QList<QByteArray> _properties;
@@ -161,7 +163,7 @@ private:
 /**
  * @brief The MkColJob class
  */
-class MkColJob : public AbstractNetworkJob {
+class OWNCLOUDSYNC_EXPORT MkColJob : public AbstractNetworkJob {
     Q_OBJECT
 public:
     explicit MkColJob(Account *account, const QString &path, QObject *parent = 0);
@@ -171,13 +173,13 @@ signals:
     void finished(QNetworkReply::NetworkError);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
 };
 
 /**
  * @brief The CheckServerJob class
  */
-class CheckServerJob : public AbstractNetworkJob {
+class OWNCLOUDSYNC_EXPORT CheckServerJob : public AbstractNetworkJob {
     Q_OBJECT
 public:
     explicit CheckServerJob(Account *account, bool followRedirect = false, QObject *parent = 0);
@@ -189,14 +191,16 @@ public:
 
 signals:
     void instanceFound(const QUrl&url, const QVariantMap &info);
+    void instanceNotFound(QNetworkReply *reply);
     void timeout(const QUrl&url);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
     virtual void slotTimeout();
 
 private:
     bool _followRedirects;
+    bool _subdirFallback;
     int _redirectCount;
 };
 
@@ -214,7 +218,7 @@ signals:
     void etagRetreived(const QString &etag);
 
 private slots:
-    virtual void finished();
+    virtual bool finished();
 };
 
 /**
@@ -230,7 +234,8 @@ signals:
     void quotaRetrieved(qint64 totalBytes, qint64 availableBytes);
 
 private slots:
-    virtual void finished();
+    /** Return true if you want the job to be deleted after this slot has finished running. */
+    virtual bool finished();
 };
 
 } // namespace Mirall

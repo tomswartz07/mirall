@@ -49,7 +49,8 @@ public:
         FileIgnored ///< The file is in the ignored list
     };
 
-    SyncFileItem() : _type(UnknownType), _should_update_etag(false), _blacklistedInDb(false),
+    SyncFileItem() : _type(UnknownType),  _direction(None), _instruction(CSYNC_INSTRUCTION_NONE),
+        _size(0), _should_update_etag(false), _blacklistedInDb(false),
         _status(NoStatus), _httpErrorCode(0), _requestDuration(0) {}
 
     friend bool operator==(const SyncFileItem& item1, const SyncFileItem& item2) {
@@ -82,6 +83,7 @@ public:
     time_t               _modtime;
     QByteArray           _etag;
     quint64              _size;
+    quint64              _inode;
     bool                 _should_update_etag;
     QByteArray           _fileId;
     bool                 _blacklistedInDb;

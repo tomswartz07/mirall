@@ -53,6 +53,7 @@ class PUTFileJob : public AbstractNetworkJob {
     Q_OBJECT
     QIODevice* _device;
     QMap<QByteArray, QByteArray> _headers;
+    QString _errorString;
 
 public:
     // Takes ownership of the device
@@ -62,9 +63,17 @@ public:
 
     virtual void start();
 
-    virtual void finished() {
+    virtual bool finished() {
         emit finishedSignal();
+        return true;
     }
+
+    QString errorString() {
+        return _errorString.isEmpty() ? reply()->errorString() : _errorString;
+    };
+
+    virtual void slotTimeout();
+
 
 signals:
     void finishedSignal();
@@ -90,7 +99,7 @@ private slots:
     void slotUploadProgress(qint64,qint64);
     void abort();
     void startNextChunk();
-
+    void finalize(const Mirall::SyncFileItem&);
 };
 
 
@@ -100,6 +109,7 @@ class GETFileJob : public AbstractNetworkJob {
     QMap<QByteArray, QByteArray> _headers;
     QString _errorString;
     QByteArray _expectedEtagForResume;
+    SyncFileItem::Status _errorStatus;
 public:
 
     // DOES NOT take owncership of the device.
@@ -107,16 +117,23 @@ public:
                         const QMap<QByteArray, QByteArray> &headers, QByteArray expectedEtagForResume,
                         QObject* parent = 0)
     : AbstractNetworkJob(account, path, parent),
-      _device(device), _headers(headers), _expectedEtagForResume(expectedEtagForResume) {}
+      _device(device), _headers(headers), _expectedEtagForResume(expectedEtagForResume),
+      _errorStatus(SyncFileItem::NoStatus) {}
 
     virtual void start();
-    virtual void finished() {
+    virtual bool finished() {
         emit finishedSignal();
+        return true;
     }
 
     QString errorString() {
         return _errorString.isEmpty() ? reply()->errorString() : _errorString;
     };
+
+    SyncFileItem::Status errorStatus() { return _errorStatus; }
+
+    virtual void slotTimeout();
+
 
 signals:
     void finishedSignal();
