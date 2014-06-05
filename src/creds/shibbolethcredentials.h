@@ -61,7 +61,7 @@ public Q_SLOTS:
 
 private Q_SLOTS:
     void onShibbolethCookieReceived(const QNetworkCookie&, Account*);
-    void slotBrowserAccepted();
+    void slotBrowserRejected();
     void onFetched();
     void slotReadJobDone(QKeychain::Job*);
     void slotInvalidateAndFetchInvalidateDone(QKeychain::Job*);
@@ -77,12 +77,12 @@ private:
     void storeShibCookie(const QNetworkCookie &cookie, Account *account);
     void removeShibCookie(Account *account);
     void addToCookieJar(const QNetworkCookie &cookie);
-    bool removeFromCookieJar(const QNetworkCookie &cookie);
     QUrl _url;
     QByteArray prepareCookieData() const;
 
     bool _ready;
     bool _stillValid;
+    bool _fetchJobInProgress;
     QPointer<ShibbolethWebView> _browser;
     QNetworkCookie _shibCookie;
     QString _user;

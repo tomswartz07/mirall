@@ -20,12 +20,18 @@
 
 #include "config_csync.h"
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <stdio.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 #include "c_lib.h"
+#include "c_private.h"
 
 #include "csync_private.h"
 #include "csync_exclude.h"
@@ -217,7 +223,7 @@ CSYNC_EXCLUDE_TYPE csync_excluded(CSYNC *ctx, const char *path, int filetype) {
   SAFE_FREE(bname);
   SAFE_FREE(dname);
 
-  if (ctx->excludes == NULL) {
+  if (ctx == NULL || ctx->excludes == NULL) {
       goto out;
   }
 

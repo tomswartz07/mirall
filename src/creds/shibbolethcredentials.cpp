@@ -88,6 +88,7 @@ ShibbolethCredentials::ShibbolethCredentials()
       _url(),
       _ready(false),
       _stillValid(false),
+      _fetchJobInProgress(false),
       _browser(0)
 {}
 
@@ -158,6 +159,10 @@ QNetworkAccessManager* ShibbolethCredentials::getQNAM() const
 
 void ShibbolethCredentials::slotReplyFinished(QNetworkReply* r)
 {
+    if (!_browser.isNull()) {
+        return;
+    }
+
     QVariant target = r->attribute(QNetworkRequest::RedirectionTargetAttribute);
     if (target.isValid()) {
         _stillValid = false;
@@ -174,10 +179,16 @@ bool ShibbolethCredentials::ready() const
 
 void ShibbolethCredentials::fetch(Account *account)
 {
+
+    if(_fetchJobInProgress) {
+        return;
+    }
+
     if (_user.isEmpty()) {
         _user = account->credentialSetting(QLatin1String(userC)).toString();
     }
     if (_ready) {
+        _fetchJobInProgress = false;
         Q_EMIT fetched();
     } else {
         if (account) {
@@ -190,6 +201,7 @@ void ShibbolethCredentials::fetch(Account *account)
         job->setProperty("account", QVariant::fromValue(account));
         connect(job, SIGNAL(finished(QKeychain::Job*)), SLOT(slotReadJobDone(QKeychain::Job*)));
         job->start();
+        _fetchJobInProgress = true;
     }
 }
 
@@ -210,10 +222,9 @@ void ShibbolethCredentials::persist(Account* account)
 // only used by Application::slotLogout(). Use invalidateAndFetch for normal usage
 void ShibbolethCredentials::invalidateToken(Account *account)
 {
-    Q_UNUSED(account)
-    if (!removeFromCookieJar(_shibCookie)) {
-        qDebug() << "invalidateToken() called but no shibCookie in in cookie jar!";
-    }
+    CookieJar *jar = static_cast<CookieJar*>(account->networkAccessManager()->cookieJar());
+    jar->deleteCookie(_shibCookie);
+    jar->clearSessionCookies();
     removeShibCookie(account);
     _shibCookie = QNetworkCookie();
     // ### access to ctx missing, but might not be required at all
@@ -261,19 +272,22 @@ void ShibbolethCredentials::slotUserFetched(const QString &user)
 
     _stillValid = true;
     _ready = true;
+    _fetchJobInProgress = false;
     Q_EMIT fetched();
 }
 
 
-void ShibbolethCredentials::slotBrowserAccepted()
+void ShibbolethCredentials::slotBrowserRejected()
 {
     _ready = false;
+    _fetchJobInProgress = false;
     Q_EMIT fetched();
 }
 
 void ShibbolethCredentials::invalidateAndFetch(Account* account)
 {
     _ready = false;
+    _fetchJobInProgress = true;
 
     // delete the credentials, then in the slot fetch them again (which will trigger browser)
     DeletePasswordJob *job = new DeletePasswordJob(Theme::instance()->appName());
@@ -290,6 +304,7 @@ void ShibbolethCredentials::slotInvalidateAndFetchInvalidateDone(QKeychain::Job*
 
     connect (this, SIGNAL(fetched()),
              this, SLOT(onFetched()));
+    _fetchJobInProgress = false;
     // small hack to support the ShibbolethRefresher hack
     // we already rand fetch() with a valid account object,
     // and hence know the url on refresh
@@ -320,6 +335,7 @@ void ShibbolethCredentials::slotReadJobDone(QKeychain::Job *job)
 
         _ready = true;
         _stillValid = true;
+        _fetchJobInProgress = false;
         Q_EMIT fetched();
     } else {
         showLoginWindow(account);
@@ -337,10 +353,7 @@ void ShibbolethCredentials::showLoginWindow(Account* account)
     _browser = new ShibbolethWebView(account);
     connect(_browser, SIGNAL(shibbolethCookieReceived(QNetworkCookie, Account*)),
             this, SLOT(onShibbolethCookieReceived(QNetworkCookie, Account*)));
-    connect(_browser, SIGNAL(accepted()),
-            this, SLOT(slotBrowserAccepted()));
-    // FIXME If the browser was hidden (e.g. user closed it) without us logging in, the logic gets stuck
-    // and can only be unstuck by restarting the app or pressing "Sign in" (we should switch to offline but we don't)
+    connect(_browser, SIGNAL(rejected()), this, SLOT(slotBrowserRejected()));
 
     _browser->show();
 }
@@ -397,13 +410,6 @@ void ShibbolethCredentials::addToCookieJar(const QNetworkCookie &cookie)
     jar->blockSignals(true); // otherwise we'd call ourselves
     jar->setCookiesFromUrl(cookies, account->url());
     jar->blockSignals(false);
-}
-
-bool ShibbolethCredentials::removeFromCookieJar(const QNetworkCookie &cookie)
-{
-    Account *account = AccountManager::instance()->account();
-    CookieJar *jar = qobject_cast<CookieJar*>(account->networkAccessManager()->cookieJar());
-    return jar->deleteCookie(cookie);
 }
 
 

@@ -87,7 +87,7 @@ bool CookieJar::setCookiesFromUrl(const QList<QNetworkCookie>& cookieList, const
 QList<QNetworkCookie> CookieJar::cookiesForUrl(const QUrl &url) const
 {
     QList<QNetworkCookie> cookies = QNetworkCookieJar::cookiesForUrl(url);
-    qDebug() << url << "requests:" << cookies;
+//    qDebug() << url << "requests:" << cookies;
     return cookies;
 }
 
@@ -105,6 +105,12 @@ bool CookieJar::deleteCookie(const QNetworkCookie &delCookie)
     setAllCookies(cookies);
     return removeSucceeded;
 }
+
+void CookieJar::clearSessionCookies()
+{
+    setAllCookies(removeExpired(allCookies()));
+}
+
 
 void CookieJar::save()
 {
@@ -133,7 +139,7 @@ QList<QNetworkCookie> CookieJar::removeExpired(const QList<QNetworkCookie> &cook
 {
     QList<QNetworkCookie> updatedList;
     foreach(const QNetworkCookie &cookie, cookies) {
-        if (cookie.expirationDate() > QDateTime::currentDateTime()) {
+        if (cookie.expirationDate() > QDateTime::currentDateTime() && !cookie.isSessionCookie()) {
             updatedList << cookie;
         }
     }

@@ -22,6 +22,7 @@
 #include "propagatorjobs.h"
 #include <QNetworkAccessManager>
 #include <QFileInfo>
+#include <QDir>
 #include <cmath>
 
 namespace Mirall {
@@ -256,6 +257,12 @@ void PropagateUploadFileQNAM::slotPutFinished()
             errorString += QLatin1String(" (") + rx.cap(1) + QLatin1Char(')');
         }
 
+        if (_item._httpErrorCode == 412) {
+            // Precondition Failed:   Maybe the bad etag is in the database, we need to clear the
+            // parent folder etag so we won't read from DB next sync.
+            _propagator->_journal->avoidReadFromDbOnNextSync(_item._file);
+        }
+
         done(classifyError(err, _item._httpErrorCode), errorString);
         return;
     }
@@ -278,7 +285,7 @@ void PropagateUploadFileQNAM::slotPutFinished()
         _currentChunk++;
         if (_currentChunk >= _chunkCount) {
             _propagator->_activeJobs--;
-            done(SyncFileItem::NormalError, tr("The server did not aknoledge the last chunk. (No e-tag were present)"));
+            done(SyncFileItem::NormalError, tr("The server did not acknowledge the last chunk. (No e-tag were present)"));
             return;
         }
 
@@ -357,13 +364,38 @@ void PropagateUploadFileQNAM::abort()
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+// DOES NOT take owncership of the device.
+GETFileJob::GETFileJob(Account* account, const QString& path, QIODevice *device,
+                    const QMap<QByteArray, QByteArray> &headers, QByteArray expectedEtagForResume,
+                    QObject* parent)
+: AbstractNetworkJob(account, path, parent),
+  _device(device), _headers(headers), _expectedEtagForResume(expectedEtagForResume),
+  _errorStatus(SyncFileItem::NoStatus)
+{
+}
+
+GETFileJob::GETFileJob(Account* account, const QUrl& url, QIODevice *device,
+                    const QMap<QByteArray, QByteArray> &headers,
+                    QObject* parent)
+: AbstractNetworkJob(account, url.toEncoded(), parent),
+  _device(device), _headers(headers),
+  _errorStatus(SyncFileItem::NoStatus), _directDownloadUrl(url)
+{
+}
+
+
 void GETFileJob::start() {
     QNetworkRequest req;
     for(QMap<QByteArray, QByteArray>::const_iterator it = _headers.begin(); it != _headers.end(); ++it) {
         req.setRawHeader(it.key(), it.value());
     }
 
-    setReply(davRequest("GET", path(), req));
+    if (_directDownloadUrl.isEmpty()) {
+        setReply(davRequest("GET", path(), req));
+    } else {
+        // Use direct URL
+        setReply(davRequest("GET", _directDownloadUrl, req));
+    }
     setupConnections(reply());
 
     if( reply()->error() != QNetworkReply::NoError ) {
@@ -385,17 +417,21 @@ void GETFileJob::slotMetaDataChanged()
         return;
     }
 
-    QByteArray etag = parseEtag(reply()->rawHeader("Etag"));
-
-    if (etag.isEmpty()) {
+    _etag = parseEtag(reply()->rawHeader("Etag"));
+    if (!_directDownloadUrl.isEmpty() && !_etag.isEmpty()) {
+        qDebug() << Q_FUNC_INFO << "Direct download used, ignoring server ETag" << _etag;
+        _etag = QByteArray(); // reset received ETag
+    } else if (!_directDownloadUrl.isEmpty()) {
+        // All fine, ETag empty and directDownloadUrl used
+    } else if (_etag.isEmpty()) {
         qDebug() << Q_FUNC_INFO << "No E-Tag reply by server, considering it invalid";
         _errorString = tr("No E-Tag received from server, check Proxy/Gateway");
         _errorStatus = SyncFileItem::NormalError;
         reply()->abort();
         return;
-    } else if (!_expectedEtagForResume.isEmpty() && _expectedEtagForResume != etag) {
+    } else if (!_expectedEtagForResume.isEmpty() && _expectedEtagForResume != _etag) {
         qDebug() << Q_FUNC_INFO <<  "We received a different E-Tag for resuming!"
-                << _expectedEtagForResume << "vs" << etag;
+                << _expectedEtagForResume << "vs" << _etag;
         _errorString = tr("We received a different E-Tag for resuming. Retrying next time.");
         _errorStatus = SyncFileItem::NormalError;
         reply()->abort();
@@ -430,7 +466,12 @@ void GETFileJob::slotReadyRead()
     resetTimeout();
 }
 
-
+void GETFileJob::slotTimeout()
+{
+    _errorString =  tr("Connection Timeout");
+    _errorStatus = SyncFileItem::FatalError;
+    reply()->abort();
+}
 
 void PropagateDownloadFileQNAM::start()
 {
@@ -438,6 +479,13 @@ void PropagateDownloadFileQNAM::start()
         return;
 
     qDebug() << Q_FUNC_INFO << _item._file << _propagator->_activeJobs;
+
+    // do a klaas' case clash check.
+    if( _propagator->localFileNameClash(_item._file) ) {
+        done( SyncFileItem::NormalError, tr("File %1 can not be downloaded because of a local file name clash!")
+              .arg(QDir::toNativeSeparators(_item._file)) );
+        return;
+    }
 
     emit progress(_item, 0);
 
@@ -484,8 +532,6 @@ void PropagateDownloadFileQNAM::start()
 
 
     QMap<QByteArray, QByteArray> headers;
-    /* Allow compressed content by setting the header */
-    //headers["Accept-Encoding"] = "gzip";
 
     if (_tmpFile.size() > 0) {
         quint64 done = _tmpFile.size();
@@ -500,9 +546,22 @@ void PropagateDownloadFileQNAM::start()
         _startSize = done;
     }
 
-    _job = new GETFileJob(AccountManager::instance()->account(),
-                          _propagator->_remoteFolder + _item._file,
-                          &_tmpFile, headers, expectedEtagForResume);
+    if (_item._directDownloadUrl.isEmpty()) {
+        // Normal job, download from oC instance
+        _job = new GETFileJob(AccountManager::instance()->account(),
+                              _propagator->_remoteFolder + _item._file,
+                              &_tmpFile, headers, expectedEtagForResume);
+    } else {
+        // We were provided a direct URL, use that one
+        if (!_item._directDownloadCookies.isEmpty()) {
+            headers["Cookie"] = _item._directDownloadCookies.toUtf8();
+        }
+        QUrl url = QUrl::fromUserInput(_item._directDownloadUrl);
+        _job = new GETFileJob(AccountManager::instance()->account(),
+                              url,
+                              &_tmpFile, headers);
+        qDebug() << Q_FUNC_INFO << "directDownloadUrl given for " << _item._file << _item._directDownloadUrl;
+    }
     _job->setTimeout(_propagator->httpTimeout() * 1000);
     connect(_job, SIGNAL(finishedSignal()), this, SLOT(slotGetFinished()));
     connect(_job, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(slotDownloadProgress(qint64,qint64)));
@@ -540,7 +599,11 @@ void PropagateDownloadFileQNAM::slotGetFinished()
         return;
     }
 
-    _item._etag = parseEtag(job->reply()->rawHeader("Etag"));
+    if (!job->etag().isEmpty()) {
+        // The etag will be empty if we used a direct download URL.
+        // (If it was really empty by the server, the GETFileJob will have errored
+        _item._etag = parseEtag(job->etag());
+    }
     _item._requestDuration = job->duration();
     _item._responseTimeStamp = job->responseTimestamp();
 
@@ -621,14 +684,5 @@ void PropagateDownloadFileQNAM::abort()
     if (_job &&  _job->reply())
         _job->reply()->abort();
 }
-
-void GETFileJob::slotTimeout()
-{
-    _errorString =  tr("Connection Timeout");
-    _errorStatus = SyncFileItem::FatalError;
-    reply()->abort();
-}
-
-
 
 }

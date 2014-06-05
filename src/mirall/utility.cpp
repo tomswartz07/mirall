@@ -167,20 +167,9 @@ QByteArray Utility::userAgentString()
 void Utility::raiseDialog( QWidget *raiseWidget )
 {
 #ifndef TOKEN_AUTH_ONLY
-    // viel hilft viel ;-)
-    if( raiseWidget ) {
-#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0) && \
-    (defined(Q_OS_WIN) || defined (Q_OS_MAC))
-        Qt::WindowFlags eFlags = raiseWidget->windowFlags();
-        if (!(eFlags & Qt::WindowStaysOnTopHint)) {
-            eFlags |= Qt::WindowStaysOnTopHint;
-            raiseWidget->setWindowFlags(eFlags);
-            raiseWidget->show();
-            eFlags &= ~Qt::WindowStaysOnTopHint;
-            raiseWidget->setWindowFlags(eFlags);
-        }
-#endif
-        raiseWidget->show();
+    if( raiseWidget && raiseWidget->parentWidget() == 0) {
+        // Qt has a bug which causes parent-less dialogs to pop-under.
+        raiseWidget->showNormal();
         raiseWidget->raise();
         raiseWidget->activateWindow();
     }
@@ -346,6 +335,15 @@ static bool checkDolphinCanSelect()
     p.start("dolphin", QStringList() << "--help", QFile::ReadOnly);
     p.waitForFinished();
     return p.readAll().contains("--select");
+}
+
+bool Utility::fsCasePreserving()
+{
+    bool re = false;
+    if( isWindows() || isMac() ) {
+        re = true;
+    }
+    return re;
 }
 
 // inspired by Qt Creator's showInGraphicalShell();

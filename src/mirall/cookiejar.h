@@ -16,9 +16,11 @@
 
 #include <QNetworkCookieJar>
 
+#include "owncloudlib.h"
+
 namespace Mirall {
 
-class CookieJar : public QNetworkCookieJar
+class OWNCLOUDSYNC_EXPORT CookieJar : public QNetworkCookieJar
 {
     Q_OBJECT
 public:
@@ -28,6 +30,7 @@ public:
     QList<QNetworkCookie> cookiesForUrl(const QUrl &url) const;
 
     virtual bool deleteCookie(const QNetworkCookie & cookie);
+    void clearSessionCookies();
 
 signals:
     void newCookiesForUrl(const QList<QNetworkCookie>& cookieList, const QUrl& url);

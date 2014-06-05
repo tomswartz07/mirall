@@ -485,7 +485,7 @@ SyncJournalFileRecord SyncJournalDb::getFileRecord( const QString& filename )
             _getFileRecordQuery->finish();
         } else {
             QString err = _getFileRecordQuery->lastError().text();
-            qDebug() << "Can not query " << _getFileRecordQuery->lastQuery() << ", Error:" << err;
+	    qDebug() << "No journal entry found for " << filename;
         }
     }
     return rec;
@@ -770,7 +770,15 @@ void SyncJournalDb::updateBlacklistEntry( const SyncJournalBlacklistRecord& item
         return;
     }
 
-    query.prepare("SELECT retrycount FROM blacklist WHERE path=:path");
+    QString sql("SELECT retrycount FROM blacklist WHERE path=:path");
+
+    if( Utility::fsCasePreserving() ) {
+        // if the file system is case preserving we have to check the blacklist
+        // case insensitively
+        sql += QLatin1String(" COLLATE NOCASE");
+    }
+
+    query.prepare(sql);
     query.bindValue(":path", item._file);
 
     if( !query.exec() ) {
@@ -827,6 +835,28 @@ void SyncJournalDb::avoidRenamesOnNextSync(const QString& path)
     }
 }
 
+void SyncJournalDb::avoidReadFromDbOnNextSync(const QString& fileName)
+{
+    //Make sure that on the next sync, filName is not read from the DB but use the PROPFIND to
+    //get the info from the server
+    // We achieve that by clearing the etag of the parents directory recursively
+
+    QMutexLocker locker(&_mutex);
+
+    if( !checkConnect() ) {
+        return;
+    }
+
+    QSqlQuery query(_db);
+    // This query will match entries for whitch the path is a prefix of fileName
+    query.prepare("UPDATE metadata SET md5='_invalid_' WHERE ? LIKE(path||'/%') AND type == 2"); // CSYNC_FTW_TYPE_DIR == 2
+    query.bindValue(0, fileName);
+    if( !query.exec() ) {
+        qDebug() << "SQL error in avoidRenamesOnNextSync: "<< query.lastError().text();
+    } else {
+        qDebug() << query.executedQuery()  << fileName;
+    }
+}
 
 void SyncJournalDb::commit(const QString& context, bool startTrans)
 {
