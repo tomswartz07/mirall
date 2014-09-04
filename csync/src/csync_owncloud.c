@@ -24,6 +24,8 @@
 
 #include <inttypes.h>
 
+#include "csync_private.h"
+
 
 /*
  * helper method to build up a user text for SSL problems, called from the
@@ -430,6 +432,8 @@ static int dav_connect(csync_owncloud_ctx_t *ctx,  const char *base_url) {
         ne_set_read_timeout(ctx->dav_session.ctx, ctx->dav_session.read_timeout);
         DEBUG_WEBDAV("Timeout set to %u seconds", ctx->dav_session.read_timeout );
     }
+    // Should never take more than some seconds, 30 is really a max.
+    ne_set_connect_timeout(ctx->dav_session.ctx, 30);
 
     snprintf( uaBuf, sizeof(uaBuf), "Mozilla/5.0 (%s) csyncoC/%s",
               csync_owncloud_get_platform(), CSYNC_STRINGIFY( LIBCSYNC_VERSION ));
@@ -461,7 +465,7 @@ static int dav_connect(csync_owncloud_ctx_t *ctx,  const char *base_url) {
     if( proxystate < 0 ) {
         DEBUG_WEBDAV("Error: Proxy-Configuration failed.");
     } else if( proxystate > 0 ) {
-        ne_set_proxy_auth( ctx->dav_session.ctx, proxy_authentication_callback_by_neon, 0 );
+        ne_set_proxy_auth( ctx->dav_session.ctx, proxy_authentication_callback_by_neon, ctx );
     }
 
     ctx->_connected = 1;
@@ -486,20 +490,10 @@ static void propfind_results_callback(void *userdata,
 {
     struct listdir_context *fetchCtx = userdata;
     struct resource *newres = 0;
-    const char *clength, *modtime = NULL;
-    const char *resourcetype = NULL;
-    const char *md5sum = NULL;
-    const char *file_id = NULL;
-    const char *directDownloadUrl = NULL;
-    const char *directDownloadCookies = NULL;
     const ne_status *status = NULL;
     char *path = ne_path_unescape( uri->path );
 
     (void) status;
-    if( ! fetchCtx ) {
-        DEBUG_WEBDAV("No valid fetchContext");
-        return;
-    }
 
     if( ! fetchCtx->target ) {
         DEBUG_WEBDAV("error: target must not be zero!" );
@@ -508,46 +502,9 @@ static void propfind_results_callback(void *userdata,
 
     /* Fill the resource structure with the data about the file */
     newres = c_malloc(sizeof(struct resource));
-    ZERO_STRUCTP(newres);
     newres->uri =  path; /* no need to strdup because ne_path_unescape already allocates */
     newres->name = c_basename( path );
-
-    modtime      = ne_propset_value( set, &ls_props[0] );
-    clength      = ne_propset_value( set, &ls_props[1] );
-    resourcetype = ne_propset_value( set, &ls_props[2] );
-    md5sum       = ne_propset_value( set, &ls_props[3] );
-    file_id      = ne_propset_value( set, &ls_props[4] );
-    directDownloadUrl = ne_propset_value( set, &ls_props[5] );
-    directDownloadCookies = ne_propset_value( set, &ls_props[6] );
-
-    newres->type = resr_normal;
-    if( clength == NULL && resourcetype && strncmp( resourcetype, "<DAV:collection>", 16 ) == 0) {
-        newres->type = resr_collection;
-    }
-
-    if (modtime) {
-        newres->modtime = oc_httpdate_parse(modtime);
-    }
-
-    /* DEBUG_WEBDAV("Parsing Modtime: %s -> %llu", modtime, (unsigned long long) newres->modtime ); */
-    newres->size = 0;
-    if (clength) {
-        newres->size = atoll(clength);
-        /* DEBUG_WEBDAV("Parsed File size for %s from %s: %lld", newres->name, clength, (long long)newres->size ); */
-    }
-
-    if( md5sum ) {
-        newres->md5 = csync_normalize_etag(md5sum);
-    }
-
-    csync_vio_set_file_id(newres->file_id, file_id);
-
-    if (directDownloadUrl) {
-        newres->directDownloadUrl = c_strdup(directDownloadUrl);
-    }
-    if (directDownloadCookies) {
-        newres->directDownloadCookies = c_strdup(directDownloadCookies);
-    }
+    fill_webdav_properties_into_resource(newres, set);
 
     /* prepend the new resource to the result list */
     newres->next   = fetchCtx->list;
@@ -584,6 +541,11 @@ static struct listdir_context *fetch_resource_list(csync_owncloud_ctx_t *ctx, co
         }
     }
 
+    if( ctx->csync_ctx->callbacks.update_callback ) {
+	ctx->csync_ctx->callbacks.update_callback(false, curi, 
+              ctx->csync_ctx->callbacks.update_callback_userdata);
+    }
+
     fetchCtx = c_malloc( sizeof( struct listdir_context ));
     if (!fetchCtx) {
         errno = ENOMEM;
@@ -614,7 +576,7 @@ static struct listdir_context *fetch_resource_list(csync_owncloud_ctx_t *ctx, co
             ret = NE_CONNECT;
             set_error_message(ctx, req_status->reason_phrase);
         }
-        DEBUG_WEBDAV("Simple propfind result code %d.", req_status->code);
+        DEBUG_WEBDAV("Simple propfind result code %d.", req_status ? req_status->code : -1);
     } else {
         if( ret == NE_ERROR && req_status->code == 404) {
             errno = ENOENT;

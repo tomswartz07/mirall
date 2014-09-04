@@ -227,9 +227,6 @@ int csync_vio_local_stat(const char *uri, csync_vio_file_stat_t *buf) {
     buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_FLAGS;
     buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_TYPE;
 
-    buf->mode = 666;
-    buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_PERMISSIONS;
-
     buf->device = fileInfo.dwVolumeSerialNumber;
     buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_DEVICE;
 
@@ -260,6 +257,7 @@ int csync_vio_local_stat(const char *uri, csync_vio_file_stat_t *buf) {
         buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_CTIME;
     }
 
+    c_free_locale_string(wuri);
     CloseHandle(h);
 
     return 0;
@@ -315,7 +313,7 @@ int csync_vio_local_stat(const char *uri, csync_vio_file_stat_t *buf) {
   buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_TYPE;
 
   buf->mode = sb.st_mode;
-  buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_PERMISSIONS;
+  buf->fields |= CSYNC_VIO_FILE_STAT_FIELDS_MODE;
 
   if (buf->type == CSYNC_VIO_FILE_TYPE_SYMBOLIC_LINK) {
     /* FIXME: handle symlink */

@@ -128,9 +128,6 @@ int csync_create(CSYNC **csync, const char *local, const char *remote) {
 
   ctx->status_code = CSYNC_STATUS_OK;
 
-  ctx->pwd.uid = getuid();
-  ctx->pwd.euid = geteuid();
-
   ctx->local.list     = 0;
   ctx->remote.list    = 0;
   ctx->current_fs = NULL;
@@ -242,11 +239,6 @@ int csync_update(CSYNC *ctx) {
             "Update detection for local replica took %.2f seconds walking %zu files.",
             c_secdiff(finish, start), c_rbtree_size(ctx->local.tree));
   csync_memstat_check();
-
-  if (rc < 0) {
-    ctx->status_code = CSYNC_STATUS_TREE_ERROR;
-    return -1;
-  }
 
   /* update detection for remote replica */
   csync_gettime(&start);
@@ -400,14 +392,13 @@ static int _csync_treewalk_visitor(void *obj, void *data) {
       trav.path         = cur->path;
       trav.size         = cur->size;
       trav.modtime      = cur->modtime;
-      trav.uid          = cur->uid;
-      trav.gid          = cur->gid;
       trav.mode         = cur->mode;
       trav.type         = cur->type;
       trav.instruction  = cur->instruction;
       trav.rename_path  = cur->destpath;
       trav.etag         = cur->etag;
       trav.file_id      = cur->file_id;
+      trav.remotePerm = cur->remotePerm;
       trav.directDownloadUrl = cur->directDownloadUrl;
       trav.directDownloadCookies = cur->directDownloadCookies;
       trav.inode        = cur->inode;
@@ -531,8 +522,6 @@ static void _tree_destructor(void *data) {
  * used by csync_commit and csync_destroy */
 static void _csync_clean_ctx(CSYNC *ctx)
 {
-    c_list_t * walk;
-
     /* destroy the rbtrees */
     if (c_rbtree_size(ctx->local.tree) > 0) {
         c_rbtree_destroy(ctx->local.tree, _tree_destructor);
@@ -544,25 +533,14 @@ static void _csync_clean_ctx(CSYNC *ctx)
 
     csync_rename_destroy(ctx);
 
-    for (walk = c_list_last(ctx->local.ignored_cleanup); walk != NULL; walk = c_list_prev(walk)) {
-        SAFE_FREE(walk->data);
-    }
-    for (walk = c_list_last(ctx->remote.ignored_cleanup); walk != NULL; walk = c_list_prev(walk)) {
-        SAFE_FREE(walk->data);
-    }
-
     /* free memory */
     c_rbtree_free(ctx->local.tree);
     c_list_free(ctx->local.list);
-    c_list_free(ctx->local.ignored_cleanup);
     c_rbtree_free(ctx->remote.tree);
     c_list_free(ctx->remote.list);
-    c_list_free(ctx->remote.ignored_cleanup);
 
     ctx->remote.list = 0;
     ctx->local.list = 0;
-    ctx->remote.ignored_cleanup = 0;
-    ctx->local.ignored_cleanup = 0;
 
     SAFE_FREE(ctx->statedb.file);
 }
@@ -669,7 +647,7 @@ int csync_add_exclude_list(CSYNC *ctx, const char *path) {
     return -1;
   }
 
-  return csync_exclude_load(ctx, path);
+  return csync_exclude_load(path, &ctx->excludes);
 }
 
 void csync_clear_exclude_list(CSYNC *ctx)

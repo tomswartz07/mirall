@@ -146,21 +146,21 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
   if (excluded != CSYNC_NOT_EXCLUDED) {
     CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "%s excluded  (%d)", path, excluded);
     if (excluded == CSYNC_FILE_EXCLUDE_AND_REMOVE) {
-      switch (ctx->current) {
-        case LOCAL_REPLICA:
-          ctx->local.ignored_cleanup = c_list_append(ctx->local.ignored_cleanup, c_strdup(path));
-          break;
-        case REMOTE_REPLICA:
-          ctx->remote.ignored_cleanup = c_list_append(ctx->remote.ignored_cleanup, c_strdup(path));
-          break;
-        default:
-          break;
-      }
-      return 0;
+        return 0;
     }
     if (excluded == CSYNC_FILE_SILENTLY_EXCLUDED) {
         return 0;
     }
+
+    if (ctx->current_fs) {
+        ctx->current_fs->has_ignored_files = true;
+    }
+  }
+
+  if (ctx->current == REMOTE_REPLICA && ctx->checkBlackListHook) {
+      if (ctx->checkBlackListHook(ctx->checkBlackListData, path)) {
+          return 0;
+      }
   }
 
   h = _hash_of_file(ctx, file );
@@ -179,6 +179,7 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
   st->instruction = CSYNC_INSTRUCTION_NONE;
   st->etag = NULL;
   st->child_modified = 0;
+  st->has_ignored_files = 0;
 
   /* check hardlink count */
   if (type == CSYNC_FTW_TYPE_FILE ) {
@@ -254,25 +255,30 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
             st->instruction = CSYNC_INSTRUCTION_EVAL;
             goto out;
         }
+        bool metadata_differ = (ctx->current == REMOTE_REPLICA && (!c_streq(fs->file_id, tmp->file_id)
+                                                            || !c_streq(fs->remotePerm, tmp->remotePerm)))
+                             || (ctx->current == LOCAL_REPLICA && fs->inode != tmp->inode);
         if (type == CSYNC_FTW_TYPE_DIR && ctx->current == REMOTE_REPLICA
-                && c_streq(fs->file_id, tmp->file_id) && !ctx->read_from_db_disabled) {
+                && !metadata_differ && !ctx->read_from_db_disabled) {
             /* If both etag and file id are equal for a directory, read all contents from
              * the database.
-             * The comparison of file id ensure that we fetch all the file id when upgrading from
-             * owncloud 5 to owncloud 6.
+             * The metadata comparison ensure that we fetch all the file id or permission when
+             * upgrading owncloud
              */
             CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "Reading from database: %s", path);
             ctx->remote.read_from_db = true;
         }
-
-        if (!c_streq(fs->file_id, tmp->file_id) && ctx->current == REMOTE_REPLICA) {
-            /* file id has changed. Which means we need to update the DB.
-             * (upgrade from owncloud 5 to owncloud 6 for instence) */
+        if (metadata_differ) {
+            /* file id or permissions has changed. Which means we need to update them in the DB. */
+            CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "Need to update metadata for: %s", path);
             st->should_update_etag = true;
         }
         st->instruction = CSYNC_INSTRUCTION_NONE;
     } else {
         enum csync_vio_file_type_e tmp_vio_type = CSYNC_VIO_FILE_TYPE_UNKNOWN;
+
+        /* tmp might point to malloc mem, so free it here before reusing tmp  */
+        SAFE_FREE(tmp);
 
         /* check if it's a file and has been renamed */
         if (ctx->current == LOCAL_REPLICA) {
@@ -337,6 +343,7 @@ static int _csync_detect_update(CSYNC *ctx, const char *file,
         }
     }
   } else  {
+      CSYNC_LOG(CSYNC_LOG_PRIORITY_DEBUG, "Unable to open statedb, setting inst to NEW" );
       st->instruction = CSYNC_INSTRUCTION_NEW;
   }
 
@@ -377,7 +384,9 @@ out:
       SAFE_FREE(st->directDownloadCookies);
       st->directDownloadCookies = c_strdup(fs->directDownloadCookies);
   }
-
+  if (fs->fields & CSYNC_VIO_FILE_STAT_FIELDS_PERM) {
+      strncpy(st->remotePerm, fs->remotePerm, REMOTE_PERM_BUF_SIZE);
+  }
 
 fastout:  /* target if the file information is read from database into st */
   st->phash = h;
@@ -652,6 +661,7 @@ int csync_ftw(CSYNC *ctx, const char *uri, csync_walker_fn fn,
     /* this function may update ctx->current and ctx->read_from_db */
 
     if (ctx->current_fs && previous_fs && ctx->current_fs->child_modified) {
+        /* If a directory has modified files, put the flag on the parent directory as well */
         previous_fs->child_modified = ctx->current_fs->child_modified;
     }
 
@@ -682,12 +692,16 @@ int csync_ftw(CSYNC *ctx, const char *uri, csync_walker_fn fn,
         ctx->current_fs->instruction = CSYNC_INSTRUCTION_NONE;
         ctx->current_fs->should_update_etag = true;
       }
+
+      if (ctx->current_fs && previous_fs && ctx->current_fs->has_ignored_files) {
+          /* If a directory has ignored files, put the flag on the parent directory as well */
+          previous_fs->has_ignored_files = ctx->current_fs->has_ignored_files;
+      }
     }
 
     if (flag == CSYNC_FTW_FLAG_DIR && ctx->current_fs
         && (ctx->current_fs->instruction == CSYNC_INSTRUCTION_EVAL ||
-            ctx->current_fs->instruction == CSYNC_INSTRUCTION_NEW ||
-            ctx->current_fs->instruction == CSYNC_INSTRUCTION_EVAL_RENAME)) {
+            ctx->current_fs->instruction == CSYNC_INSTRUCTION_NEW)) {
         ctx->current_fs->should_update_etag = true;
     }
 

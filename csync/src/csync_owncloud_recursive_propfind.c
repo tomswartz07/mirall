@@ -54,6 +54,9 @@ struct listdir_context *get_listdir_context_from_recursive_cache(csync_owncloud_
         DEBUG_WEBDAV("get_listdir_context_from_recursive_cache No element %s in cache found", curi);
         return NULL;
     }
+    if( ctx->csync_ctx->callbacks.update_callback ) {
+        ctx->csync_ctx->callbacks.update_callback(false, curi, ctx->csync_ctx->callbacks.update_callback_userdata);
+    }
 
     /* Out of the element, create a listdir_context.. if we could be sure that it is immutable, we could ref instead.. need to investigate */
     fetchCtx = c_malloc( sizeof( struct listdir_context ));
@@ -98,11 +101,7 @@ static void propfind_results_recursive_callback(void *userdata,
                     const ne_prop_result_set *set)
 {
     struct resource *newres = 0;
-    const char *clength, *modtime, *file_id = NULL;
-    const char *directDownloadUrl = NULL;
-    const char *directDownloadCookies = NULL;
-    const char *resourcetype = NULL;
-    const char *md5sum = NULL;
+
     const ne_status *status = NULL;
     char *path = ne_path_unescape( uri->path );
     char *parentPath;
@@ -120,53 +119,15 @@ static void propfind_results_recursive_callback(void *userdata,
 
     /* Fill the resource structure with the data about the file */
     newres = c_malloc(sizeof(struct resource));
-    ZERO_STRUCTP(newres);
 
     newres->uri =  path; /* no need to strdup because ne_path_unescape already allocates */
     newres->name = c_basename( path );
+    fill_webdav_properties_into_resource(newres, set);
 
-    modtime      = ne_propset_value( set, &ls_props[0] );
-    clength      = ne_propset_value( set, &ls_props[1] );
-    resourcetype = ne_propset_value( set, &ls_props[2] );
-    md5sum       = ne_propset_value( set, &ls_props[3] );
-    file_id      = ne_propset_value( set, &ls_props[4] );
-    directDownloadUrl = ne_propset_value( set, &ls_props[5] );
-    directDownloadCookies = ne_propset_value( set, &ls_props[6] );
-
-    newres->type = resr_normal;
-    if( resourcetype && strncmp( resourcetype, "<DAV:collection>", 16 ) == 0) {
-        newres->type = resr_collection;
+    if( newres->type == resr_collection) {
         ctx->propfind_recursive_cache_folder_count++;
     } else {
-        /* DEBUG_WEBDAV("propfind_results_recursive %s [%d]", newres->uri, newres->type); */
         ctx->propfind_recursive_cache_file_count++;
-    }
-
-    if (modtime) {
-        newres->modtime = oc_httpdate_parse(modtime);
-    }
-
-    /* DEBUG_WEBDAV("Parsing Modtime: %s -> %llu", modtime, (unsigned long long) newres->modtime ); */
-    newres->size = 0;
-    if (clength) {
-        newres->size = atoll(clength);
-        /* DEBUG_WEBDAV("Parsed File size for %s from %s: %lld", newres->name, clength, (long long)newres->size ); */
-    }
-
-    if( md5sum ) {
-        newres->md5 = csync_normalize_etag(md5sum);
-    }
-
-    csync_vio_set_file_id(newres->file_id, file_id);
-    /*
-    DEBUG_WEBDAV("propfind_results_recursive %s [%s] %s", newres->uri, newres->type == resr_collection ? "collection" : "file", newres->md5);
-    */
-
-    if (directDownloadUrl) {
-        newres->directDownloadUrl = c_strdup(directDownloadUrl);
-    }
-    if (directDownloadCookies) {
-        newres->directDownloadCookies = c_strdup(directDownloadCookies);
     }
 
     /* Create new item in rb tree */
@@ -183,6 +144,14 @@ static void propfind_results_recursive_callback(void *userdata,
             element->parent = NULL;
             c_rbtree_insert(ctx->propfind_recursive_cache, element);
             /* DEBUG_WEBDAV("results_recursive Added collection %s", newres->uri); */
+
+            // We do this here and in get_listdir_context_from_recursive_cache because
+            // a recursive PROPFIND might take some time but we still want to
+            // be informed. Later when get_listdir_context_from_recursive_cache is
+            // called the DB queries might be the problem causing slowness, so do it again there then.
+            if( ctx->csync_ctx->callbacks.update_callback ) {
+		ctx->csync_ctx->callbacks.update_callback(false, path, ctx->csync_ctx->callbacks.update_callback_userdata);
+	    }
         }
     }
 
@@ -213,13 +182,12 @@ static void propfind_results_recursive_callback(void *userdata,
             }
 
             /* DEBUG_WEBDAV("results_recursive Added child %s to collection %s", newres->uri, element->self->uri); */
-        } else {
-            /* DEBUG_WEBDAV("results_recursive No parent %s found for child %s", parentPath, newres->uri); */
-            resource_free(newres);
-            newres = NULL;
+            return;
         }
     }
 
+    resource_free(newres);
+    newres = NULL;
 }
 
 void fetch_resource_list_recursive(csync_owncloud_ctx_t *ctx, const char *uri, const char *curi)
@@ -232,6 +200,9 @@ void fetch_resource_list_recursive(csync_owncloud_ctx_t *ctx, const char *uri, c
     int depth = NE_DEPTH_INFINITE;
 
     DEBUG_WEBDAV("fetch_resource_list_recursive Starting recursive propfind %s %s", uri, curi);
+    if( ctx->csync_ctx->callbacks.update_callback ) {
+	ctx->csync_ctx->callbacks.update_callback(false, curi, ctx->csync_ctx->callbacks.update_callback_userdata);
+    }
 
     /* do a propfind request and parse the results in the results function, set as callback */
     hdl = ne_propfind_create(ctx->dav_session.ctx, curi, depth);

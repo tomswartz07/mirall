@@ -134,6 +134,10 @@ static int _csync_merge_algorithm_visitor(void *obj, void *data) {
             break;
             /* file has been removed on the opposite replica */
         case CSYNC_INSTRUCTION_NONE:
+            if (cur->has_ignored_files) {
+                /* Do not remove a directory that has ignored files */
+                break;
+            }
             cur->instruction = CSYNC_INSTRUCTION_REMOVE;
             break;
         case CSYNC_INSTRUCTION_EVAL_RENAME:
@@ -184,6 +188,7 @@ static int _csync_merge_algorithm_visitor(void *obj, void *data) {
                         csync_vio_set_file_id( other->file_id, cur->file_id );
                     }
                     other->inode = cur->inode;
+                    other->should_update_etag = true;
                     cur->instruction = CSYNC_INSTRUCTION_NONE;
                 } else if (other->instruction == CSYNC_INSTRUCTION_REMOVE) {
                     other->instruction = CSYNC_INSTRUCTION_RENAME;
@@ -193,6 +198,7 @@ static int _csync_merge_algorithm_visitor(void *obj, void *data) {
                         csync_vio_set_file_id( other->file_id, cur->file_id );
                     }
                     other->inode = cur->inode;
+                    other->should_update_etag = true;
                     cur->instruction = CSYNC_INSTRUCTION_NONE;
                 } else if (other->instruction == CSYNC_INSTRUCTION_NEW) {
                     CSYNC_LOG(CSYNC_LOG_PRIORITY_TRACE, "OOOO=> NEW detected in other tree!");
@@ -238,8 +244,8 @@ static int _csync_merge_algorithm_visitor(void *obj, void *data) {
             /* file on other replica is changed or new */
             case CSYNC_INSTRUCTION_NEW:
             case CSYNC_INSTRUCTION_EVAL:
-                if (other->type == CSYNC_VIO_FILE_TYPE_DIRECTORY &&
-                        cur->type == CSYNC_VIO_FILE_TYPE_DIRECTORY) {
+                if (other->type == CSYNC_FTW_TYPE_DIR &&
+                        cur->type == CSYNC_FTW_TYPE_DIR) {
                     is_equal_files = (other->modtime == cur->modtime);
                 } else {
                     is_equal_files = ((other->size == cur->size) && (other->modtime == cur->modtime));

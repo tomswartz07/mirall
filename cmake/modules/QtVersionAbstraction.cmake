@@ -19,10 +19,11 @@ if( Qt5Core_FOUND )
         find_package(Qt5PrintSupport REQUIRED)
         find_package(Qt5Quick REQUIRED)
         find_package(Qt5Widgets REQUIRED)
+        if(APPLE)
+           find_package(Qt5MacExtras REQUIRED)
+        endif(APPLE)
     endif()
-    if(APPLE)
-	find_package(Qt5MacExtras REQUIRED)
-    endif(APPLE)
+
 else( Qt5Core_FOUND )
     if(WIN32 OR APPLE)
 	message(FATAL_ERROR "Qt 5 not found, but application depends on Qt5 on Windows and Mac OS X")
@@ -147,6 +148,8 @@ if(NOT Qt5Core_FOUND)
 
         include( ${QT_USE_FILE} )
     endmacro()
+
+    add_definitions("-DQ_DECL_OVERRIDE=override")
 endif()
 
 if( Qt5Core_DIR )

@@ -1,5 +1,7 @@
 
 cmake_minimum_required(VERSION 2.6)
+cmake_policy(VERSION 2.8.0)
+
 project(mirall)
 set(PACKAGE "mirall")
 set( CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules )
@@ -18,7 +20,6 @@ if (NOT DEFINED APPLICATION_SHORTNAME)
 endif()
 
 include(${CMAKE_SOURCE_DIR}/VERSION.cmake)
-configure_file( ${CMAKE_SOURCE_DIR}/src/mirall/version.h.in "${CMAKE_CURRENT_BINARY_DIR}/src/mirall/version.h" )
 include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR} "${CMAKE_CURRENT_BINARY_DIR}/src/mirall/")
 
 #####
@@ -60,9 +61,9 @@ set(DATADIR ${DATA_INSTALL_DIR})
 # BUILD_OWNCLOUD_OSX_BUNDLE was not initialized OR set to true on OSX
 if(APPLE AND (NOT DEFINED BUILD_OWNCLOUD_OSX_BUNDLE OR BUILD_OWNCLOUD_OSX_BUNDLE))
     set(BUILD_OWNCLOUD_OSX_BUNDLE ON)
-    set(OWNCLOUD_OSX_BUNDLE "${APPLICATION_EXECUTABLE}.app")
-    set(LIB_INSTALL_DIR "${APPLICATION_EXECUTABLE}.app/Contents/MacOS")
-    set(BIN_INSTALL_DIR "${APPLICATION_EXECUTABLE}.app/Contents/MacOS")
+    set(OWNCLOUD_OSX_BUNDLE "bin/${APPLICATION_EXECUTABLE}.app")
+    set(LIB_INSTALL_DIR "bin/${APPLICATION_EXECUTABLE}.app/Contents/MacOS")
+    set(BIN_INSTALL_DIR "bin/${APPLICATION_EXECUTABLE}.app/Contents/MacOS")
 
 # BUILD_OWNCLOUD_OSX_BUNDLE was disabled on OSX
 elseif(APPLE AND NOT BUILD_OWNCLOUD_OSX_BUNDLE)
@@ -126,6 +127,11 @@ configure_file(config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 configure_file(test/test_journal.db "${CMAKE_BINARY_DIR}/test/test_journal.db" COPYONLY)
 
+# Copy that logo, the installer uses it later
+if(BUILD_OWNCLOUD_OSX_BUNDLE)
+    install(FILES resources/owncloud_logo_blue.png DESTINATION ${OWNCLOUD_OSX_BUNDLE}/Contents/Resources/)
+endif()
+
 include(OwnCloudCPack.cmake)
 
 add_definitions(-DUNICODE)
@@ -140,7 +146,9 @@ set(TRANSLATIONS ${TRANS_FILES})
 
 add_subdirectory(csync)
 add_subdirectory(src)
+add_subdirectory(shell_integration)
 add_subdirectory(doc)
+add_subdirectory(admin)
 
 if(UNIT_TESTING)
     include(CTest)

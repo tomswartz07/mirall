@@ -87,6 +87,8 @@ struct csync_s {
   struct {
       csync_auth_callback auth_function;
       void *userdata;
+      csync_update_callback update_callback;
+      void *update_callback_userdata;
   } callbacks;
   c_strlist_t *excludes;
 
@@ -94,7 +96,6 @@ struct csync_s {
     char *file;
     sqlite3 *db;
     int exists;
-    int disabled;
 
     sqlite3_stmt* by_hash_stmt;
     sqlite3_stmt* by_fileid_stmt;
@@ -106,7 +107,6 @@ struct csync_s {
     c_rbtree_t *tree;
     c_list_t *list;
     enum csync_replica_e type;
-    c_list_t *ignored_cleanup;
   } local;
 
   struct {
@@ -115,21 +115,13 @@ struct csync_s {
     c_list_t *list;
     enum csync_replica_e type;
     int  read_from_db;
-    c_list_t *ignored_cleanup;
   } remote;
 
-  struct {
-    int sync_symbolic_links;
-    int timeout;
 #if defined(HAVE_ICONV) && defined(WITH_ICONV)
-    iconv_t iconv_cd;
-#endif
-  } options;
-
   struct {
-    uid_t uid;
-    uid_t euid;
-  } pwd;
+    iconv_t iconv_cd;
+  } options;
+#endif
 
   /* replica we are currently walking */
   enum csync_replica_e current;
@@ -152,6 +144,10 @@ struct csync_s {
   int  read_from_db_disabled;
 
   struct csync_owncloud_ctx_s *owncloud_context;
+
+  /* hooks for checking the white list */
+  void *checkBlackListData;
+  int (*checkBlackListHook)(void*, const char*);
 };
 
 
@@ -164,19 +160,19 @@ struct csync_file_stat_s {
   int64_t size;       /* u64 */
   size_t pathlen;   /* u64 */
   uint64_t inode;   /* u64 */
-  uid_t uid;        /* u32 */
-  gid_t gid;        /* u32 */
   mode_t mode;      /* u32 */
   int nlink;        /* u32 */
   int type;         /* u32 */
   int child_modified;/*bool*/
   int should_update_etag; /*bool */
+  int has_ignored_files; /*bool: specify that a directory, or child directory contains ignored files */
 
   char *destpath;   /* for renames */
   const char *etag;
   char file_id[FILE_ID_BUF_SIZE+1];  /* the ownCloud file id is fixed width of 21 byte. */
   char *directDownloadUrl;
   char *directDownloadCookies;
+  char remotePerm[REMOTE_PERM_BUF_SIZE+1];
 
   CSYNC_STATUS error_status;
 

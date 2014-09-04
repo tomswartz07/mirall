@@ -16,10 +16,18 @@ class TestCSyncSqlite : public QObject
     Q_OBJECT
 
 private:
+    /* Attention !!!!!!!!!!!!!!!!!!!
+     * This struct MY_CSYNC has to be a copy of the CSYNC struct defined
+     * in csync_private.h until the end of struct statedb.
+     * Subsequent functions cast the struct to CSYNC. In order to get the
+     * same values as in the original struct, the start must be the same.
+     */
     typedef struct {
         struct {
             csync_auth_callback auth_function;
             void *userdata;
+            csync_update_callback update_callback;
+            void *update_callback_userdata;
         } callbacks;
         c_strlist_t *excludes;
 
@@ -55,8 +63,6 @@ private slots:
         QCOMPARE( QString::number(st->pathlen), QString::number(13));
         QCOMPARE( QString::fromUtf8(st->path), QLatin1String("test2/zu/zuzu") );
         QCOMPARE( QString::number(st->inode), QString::number(1709554));
-        QCOMPARE( QString::number(st->uid), QString::number(0));
-        QCOMPARE( QString::number(st->gid), QString::number(0));
         QCOMPARE( QString::number(st->mode), QString::number(0));
         QCOMPARE( QString::number(st->modtime), QString::number(1384415006));
         QCOMPARE( QString::number(st->type), QString::number(2));

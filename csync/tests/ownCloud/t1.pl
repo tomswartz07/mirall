@@ -23,7 +23,6 @@
 
 use lib ".";
 
-use Carp::Assert;
 use File::Copy;
 use ownCloud::Test;
 
@@ -123,8 +122,9 @@ assertLocalAndRemoteDir( '', 0);
 
 # The previous sync should have updated the etags, and this should NOT be a conflict
 printInfo( "Update the file again");
-system("echo more data >> " .  localDir() . "remoteToLocal1/kernelcrash.txt");
-system("echo corruption >> " .  localDir() . "remoteToLocal1/kraft_logo.gif");
+createLocalFile( localDir() . "remoteToLocal1/kernelcrash.txt", 2136 );
+createLocalFile( localDir() . "remoteToLocal1/kraft_logo.gif", 2332 );
+system( "sleep 2 && touch " . localDir() . "remoteToLocal1/kernelcrash.txt" );
 csync( );
 assertLocalAndRemoteDir( '', 0);
 

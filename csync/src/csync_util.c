@@ -113,12 +113,12 @@ void csync_win32_set_file_hidden( const char *file, bool h ) {
   fileName = c_utf8_to_locale( file );
   dwAttrs = GetFileAttributesW(fileName);
 
-  if (dwAttrs==INVALID_FILE_ATTRIBUTES) return;
-
-  if (h && !(dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
-     SetFileAttributesW(fileName, dwAttrs | FILE_ATTRIBUTE_HIDDEN );
-  } else if (!h && (dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
-     SetFileAttributesW(fileName, dwAttrs & ~FILE_ATTRIBUTE_HIDDEN );
+  if (dwAttrs != INVALID_FILE_ATTRIBUTES) {
+      if (h && !(dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
+          SetFileAttributesW(fileName, dwAttrs | FILE_ATTRIBUTE_HIDDEN );
+      } else if (!h && (dwAttrs & FILE_ATTRIBUTE_HIDDEN)) {
+          SetFileAttributesW(fileName, dwAttrs & ~FILE_ATTRIBUTE_HIDDEN );
+      }
   }
 
   c_free_locale_string(fileName);
@@ -140,7 +140,9 @@ bool csync_file_locked_or_open( const char *dir, const char *fname) {
     if (!csync_file_locked_or_open_ext) {
         return false;
     }
-    asprintf(&tmp_uri, "%s/%s", dir, fname);
+    if (asprintf(&tmp_uri, "%s/%s", dir, fname) < 0) {
+        return -1;
+    }
     CSYNC_LOG(CSYNC_LOG_PRIORITY_DEBUG, "csync_file_locked_or_open %s", tmp_uri);
     ret = csync_file_locked_or_open_ext(tmp_uri);
     SAFE_FREE(tmp_uri);
